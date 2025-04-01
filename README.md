@@ -2,7 +2,7 @@
 
 ## Overview
 
-SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on an extended version of the manus architecture and incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience.
+SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on an extended version of the manus architecture and incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience. The system now supports the LLLM (Larger LLM) concept, integrating multiple advanced technologies to create a more powerful and autonomous AI ecosystem.
 
 ### Key Features
 
@@ -11,6 +11,10 @@ SynthepseAI Agent is an autonomous AI agent system with self-correction capabili
 - **Learning from Experience**: Learns from past error patterns and successful code implementations to apply to new tasks.
 - **Module Reuse**: Extracts reusable modules from successful code to utilize in new tasks.
 - **Isolated Execution Environments**: Each project runs in its own virtual environment to prevent dependency conflicts.
+- **Local Model Support**: Runs with local LLM models (default: Microsoft Phi-2) using MPS acceleration on Mac, eliminating the need for API keys.
+- **Knowledge Editing (ROME)**: Directly edits the internal knowledge of language models using Rank-One Model Editing technology.
+- **Self-Reflection Reasoning (COAT)**: Implements Chain-of-Action-Thought methodology for enhanced error detection and self-correction.
+- **Knowledge Graph Processing (R-GCN)**: Utilizes Relational Graph Convolutional Networks to process and reason with complex knowledge graphs.
 
 ## System Requirements
 
@@ -18,14 +22,21 @@ SynthepseAI Agent is an autonomous AI agent system with self-correction capabili
 - Python 3.9 or higher
 - SQLite 3.x
 - Docker (required when using Weaviate)
+- PyTorch with MPS support (for Mac users with Apple Silicon)
 
 ### Dependencies
 ```bash
+torch>=2.0.0
+transformers>=4.30.0
+scipy>=1.9.0
+networkx>=3.0
+dgl>=1.0.0
 openai>=1.0.0
 weaviate-client>=3.15.0
 tenacity>=8.0.0
 python-dotenv>=1.0.0
 sqlite3
+accelerate>=0.20.0
 ```
 
 ## Installation
@@ -74,11 +85,41 @@ python main.py --goal "Perform web scraping to collect data" --workspace ./custo
 python main.py --goal "Process a text file and compute statistics" --debug
 ```
 
-### Example Run
+### Using Local Models
+
+By default, SynthepseAI now uses the Microsoft Phi-2 local model with MPS acceleration on Mac:
+
+```bash
+# Run with local model (default)
+python main.py --goal "Analyze this dataset and create visualizations"
+
+# Configure local model options in config.json
+# {
+#   "use_local_model": true,
+#   "local_model_name": "microsoft/phi-2",
+#   "device": "mps"  # Uses MPS acceleration on Mac
+# }
+```
+
+To use OpenAI API instead:
+
+```bash
+# Run with OpenAI API
+python main.py --goal "Summarize these documents" --use-api
+```
+
+### Example Runs
 
 ```bash
 # Execute a sample task
 python example.py
+
+# Run LLLM technology demonstrations
+python examples/example_local_model_phi2.py  # Local model with MPS
+python examples/example_rome_local_model.py  # ROME knowledge editing
+python examples/example_coat_local_model.py  # COAT self-correction
+python examples/example_rgcn_local_model.py  # R-GCN knowledge graph
+python examples/example_lllm_integrated.py   # Full LLLM integration
 ```
 
 ### Enabling the Learning Feature
@@ -96,16 +137,20 @@ SynthepseAI/
 ├── example.py                 # Sample execution script
 ├── config.json                # Configuration file
 ├── requirements.txt           # Dependency list
-├── docker-compose.yml # Weaviate configuration file
+├── docker-compose.yml         # Weaviate configuration file
 ├── core/                      # Core modules
-│   ├── auto_plan_agent.py     # Self-correcting agent
+│   ├── auto_plan_agent.py     # Self-correcting agent with COAT integration
 │   ├── base_agent.py          # Base agent
 │   ├── base_flow.py           # Base flow
+│   ├── coat_reasoner.py       # COAT reasoning implementation
 │   ├── graph_rag_manager.py   # GraphRAG manager
-│   ├── llm.py                 # LLM integration
+│   ├── llm.py                 # LLM integration with local model support
+│   ├── local_model_manager.py # Local model management with MPS support
 │   ├── modular_code_manager.py # Module manager
 │   ├── planning_flow.py       # Planning flow
 │   ├── project_environment.py # Project environment
+│   ├── rgcn_processor.py      # R-GCN knowledge graph processor
+│   ├── rome_model_editor.py   # ROME model editing implementation
 │   ├── script_templates.py    # Script templates
 │   ├── task_database.py       # Task database
 │   ├── tool_agent.py          # Tool agent
@@ -118,6 +163,28 @@ SynthepseAI/
 │       ├── python_project_execute.py # Project environment execution
 │       ├── docker_execute.py  # Docker execution
 │       └── system_tool.py     # System operations
+├── examples/                  # Example demonstrations
+│   ├── example_coat.py        # COAT demonstration
+│   ├── example_coat_local_model.py # COAT with local model
+│   ├── example_lllm_integrated.py # Integrated LLLM demonstration
+│   ├── example_local_model_phi2.py # Phi-2 local model demo
+│   ├── example_rgcn.py        # R-GCN demonstration
+│   ├── example_rgcn_local_model.py # R-GCN with local model
+│   ├── example_rome.py        # ROME demonstration
+│   └── example_rome_local_model.py # ROME with local model
+├── tests/                     # Test suite
+│   ├── integration_test_basic_functionality.py # Basic integration tests
+│   ├── integration_test_coat.py # COAT integration tests
+│   ├── integration_test_rgcn.py # R-GCN integration tests
+│   ├── integration_test_rome.py # ROME integration tests
+│   ├── regression_test_basic_tasks.py # Regression tests
+│   ├── test_coat_reasoner.py  # COAT unit tests
+│   ├── test_llm_local_model.py # Local model unit tests
+│   ├── test_local_model_manager.py # Local model manager tests
+│   ├── test_rgcn_processor.py # R-GCN unit tests
+│   ├── test_rgcn_processor_mps.py # R-GCN MPS tests
+│   ├── test_rome_model_editor.py # ROME unit tests
+│   └── test_rome_model_editor_mps.py # ROME MPS tests
 └── workspace/                 # Working directory
     ├── modules/               # Reusable modules
     └── project_{plan_id}/     # Project environment
@@ -370,7 +437,7 @@ flowchart TD
 ### 1. Agent System
 - **BaseAgent**: The base class for all agents.
 - **ToolAgent**: An agent with tool invocation capabilities.
-- **AutoPlanAgent**: An agent capable of automatic planning, execution, and self-repair.
+- **AutoPlanAgent**: An agent capable of automatic planning, execution, and self-repair with COAT integration.
 
 ### 2. Flow System
 - **BaseFlow**: The base class for flows.
@@ -388,10 +455,16 @@ flowchart TD
 - **GraphRAGManager**: For learning and retrieving error and code patterns.
 - **ModularCodeManager**: For managing reusable code modules.
 
-### 5. Database
+### 5. LLLM Technologies
+- **LocalModelManager**: Manages local LLM models with MPS acceleration support.
+- **ROMEModelEditor**: Implements Rank-One Model Editing for direct knowledge modification in LLMs.
+- **COATReasoner**: Implements Chain-of-Action-Thought methodology for self-reflection and error correction.
+- **RGCNProcessor**: Implements Relational Graph Convolutional Networks for knowledge graph processing.
+
+### 6. Database
 - **TaskDatabase**: An SQLite-based task and plan manager.
 
-### 6. Environment Management
+### 7. Environment Management
 - **ProjectEnvironment**: Manages virtual environments on a per-project basis.
 
 ## Workflow
