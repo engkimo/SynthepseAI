@@ -2,13 +2,17 @@ import unittest
 import os
 import sys
 import torch
-import dgl
 import numpy as np
 from unittest.mock import patch, MagicMock
 
+sys.modules['dgl'] = MagicMock()
+import dgl
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.rgcn_processor import RGCNProcessor, RGCNModel, RGCNLayer
+from unittest.mock import patch
+with patch('dgl.DGLGraph'):
+    from core.rgcn_processor import RGCNProcessor, RGCNModel, RGCNLayer
 
 class TestRGCNProcessorMPS(unittest.TestCase):
     """RGCNProcessorのMPSサポートのテスト"""
