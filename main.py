@@ -33,7 +33,10 @@ def main():
     llm = LLM(
         api_key=config.get('openai_api_key'),
         model=config.get('model', 'gpt-4-turbo'),
-        temperature=config.get('temperature', 0.7)
+        temperature=config.get('temperature', 0.7),
+        use_local_model=config.get('use_local_model', True),  # デフォルトでローカルモデルを使用
+        local_model_name=config.get('local_model_name', 'microsoft/phi-2'),  # Phi-2モデルをデフォルトに
+        device=config.get('device', None)  # デバイスは自動検出（MPSサポート）
     )
     
     # ワークスペースディレクトリを作成

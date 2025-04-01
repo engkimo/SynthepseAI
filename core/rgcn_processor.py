@@ -145,13 +145,34 @@ class RGCNProcessor:
     """
     R-GCNを使用して知識グラフを処理するクラス
     """
-    def __init__(self, embedding_dim=128, hidden_dim=64, num_bases=4):
+    def __init__(self, embedding_dim=128, hidden_dim=64, num_bases=4, device=None):
+        """
+        初期化
+        
+        Args:
+            embedding_dim: 埋め込み次元
+            hidden_dim: 隠れ層の次元
+            num_bases: 基底の数
+            device: 使用するデバイス（'cuda', 'mps', 'cpu'）
+        """
         self.embedding_dim = embedding_dim
         self.hidden_dim = hidden_dim
         self.num_bases = num_bases
         self.model = None
         self.entity_map = {}  # エンティティIDからインデックスへのマッピング
         self.relation_map = {}  # リレーションIDからインデックスへのマッピング
+        
+        if device is None:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
+        else:
+            self.device = device
+            
+        print(f"R-GCN using device: {self.device}")
         
     def build_graph(self, triples: List[Tuple[str, str, str]]) -> dgl.DGLGraph:
         """
@@ -188,6 +209,10 @@ class RGCNProcessor:
         
         g.ndata['h'] = torch.randn(len(entities), self.embedding_dim)
         
+        g = g.to(self.device)
+        g.ndata['h'] = g.ndata['h'].to(self.device)
+        g.edata['rel_type'] = g.edata['rel_type'].to(self.device)
+        
         return g
         
     def train(self, g: dgl.DGLGraph, num_epochs=100, lr=0.01):
@@ -209,6 +234,9 @@ class RGCNProcessor:
             num_rels=len(self.relation_map),
             num_bases=self.num_bases
         )
+        
+        self.model = self.model.to(self.device)
+        print(f"Model moved to {self.device}")
         
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         
@@ -255,7 +283,7 @@ class RGCNProcessor:
         
         for idx, emb in enumerate(embeddings):
             entity = reverse_entity_map[idx]
-            entity_embeddings[entity] = emb.numpy()
+            entity_embeddings[entity] = emb.detach().cpu().numpy()
             
         return entity_embeddings
         
@@ -299,6 +327,9 @@ class RGCNProcessor:
     def save_model(self, path: str):
         """
         モデルを保存
+        
+        Args:
+            path: 保存先のパス
         """
         if self.model is None:
             raise ValueError("モデルが訓練されていません")
@@ -309,17 +340,22 @@ class RGCNProcessor:
             'relation_map': self.relation_map,
             'embedding_dim': self.embedding_dim,
             'hidden_dim': self.hidden_dim,
-            'num_bases': self.num_bases
+            'num_bases': self.num_bases,
+            'device': self.device
         }
         
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(model_data, path)
+        print(f"Model saved to {path}")
         
     def load_model(self, path: str):
         """
         モデルを読み込み
+        
+        Args:
+            path: 読み込み元のパス
         """
-        model_data = torch.load(path)
+        model_data = torch.load(path, map_location=torch.device(self.device))
         
         self.entity_map = model_data['entity_map']
         self.relation_map = model_data['relation_map']
@@ -336,3 +372,17 @@ class RGCNProcessor:
         )
         
         self.model.load_state_dict(model_data['model_state'])
+        self.model = self.model.to(self.device)
+        print(f"Model loaded to {self.device}")
+        
+    def clear_cache(self):
+        """
+        キャッシュをクリア
+        """
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+            
+        print("Cache cleared")

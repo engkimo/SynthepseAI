@@ -6,3 +6,4 @@ dgl>=1.0.0
 openai>=1.0.0
 python-dotenv>=1.0.0
 tenacity>=8.0.0
+accelerate>=0.20.0

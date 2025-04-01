@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import numpy as np
@@ -20,10 +20,16 @@ class ROMEModelEditor:
     ROME（Rank-One Model Editing）を使用してLLMの内部知識を編集するクラス
     """
     
-    def __init__(self, model_cache_dir: str = None):
-        self.model_cache = {}
-        self.model_cache_dir = model_cache_dir or os.path.join(os.path.expanduser("~"), ".rome_models")
-        os.makedirs(self.model_cache_dir, exist_ok=True)
+    def __init__(self, cache_dir: Optional[str] = None):
+        """
+        初期化
+        
+        Args:
+            cache_dir: モデルキャッシュディレクトリ
+        """
+        self.cache_dir = cache_dir
+        self.models = {}  # モデルのキャッシュ
+        self.tokenizers = {}  # トークナイザーのキャッシュ
     
     def edit_knowledge(self, request: EditRequest) -> bool:
         """
@@ -57,27 +63,56 @@ class ROMEModelEditor:
             return False
     
     def _load_model(self, model_name: str) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
-        """モデルとトークナイザーをロード"""
-        if model_name in self.model_cache:
-            return self.model_cache[model_name]
+        """
+        モデルとトークナイザーをロード
+        
+        Args:
+            model_name: モデル名
+            
+        Returns:
+            (model, tokenizer)
+        """
+        if model_name in self.models and model_name in self.tokenizers:
+            return self.models[model_name], self.tokenizers[model_name]
             
         try:
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForCausalLM.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=self.cache_dir)
+            model = AutoModelForCausalLM.from_pretrained(model_name, cache_dir=self.cache_dir)
             
             if torch.cuda.is_available():
+                device = "cuda"
                 model = model.cuda()
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                device = "mps"
+                model = model.to("mps")
+            else:
+                device = "cpu"
                 
-            self.model_cache[model_name] = (model, tokenizer)
+            print(f"Loaded model {model_name} on {device}")
+            
+            self.models[model_name] = model
+            self.tokenizers[model_name] = tokenizer
+            
             return model, tokenizer
         except Exception as e:
             raise ValueError(f"Failed to load model {model_name}: {str(e)}")
     
     def _get_subject_representation(self, tokenizer, model, subject: str) -> torch.Tensor:
-        """主題の表現ベクトルを取得"""
+        """
+        主題の表現ベクトルを取得
+        
+        Args:
+            tokenizer: トークナイザー
+            model: モデル
+            subject: 主題
+            
+        Returns:
+            表現ベクトル
+        """
         inputs = tokenizer(subject, return_tensors="pt")
-        if torch.cuda.is_available():
-            inputs = {k: v.cuda() for k, v in inputs.items()}
+        
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
             
         with torch.no_grad():
             outputs = model(**inputs, output_hidden_states=True)
@@ -86,12 +121,24 @@ class ROMEModelEditor:
         return subject_repr
     
     def _compute_update(self, model, tokenizer, subject: str, target_fact: str, original_fact: str = None) -> Tuple[torch.Tensor, float]:
-        """更新方向と大きさを計算"""
+        """
+        更新方向と大きさを計算
+        
+        Args:
+            model: モデル
+            tokenizer: トークナイザー
+            subject: 主題
+            target_fact: 新しい事実
+            original_fact: 元の事実（省略可能）
+            
+        Returns:
+            (更新方向, 更新の大きさ)
+        """
         prompt = f"{subject} is"
         inputs = tokenizer(prompt, return_tensors="pt")
         
-        if torch.cuda.is_available():
-            inputs = {k: v.cuda() for k, v in inputs.items()}
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
             
         with torch.no_grad():
             original_outputs = model(**inputs)
@@ -122,12 +169,23 @@ class ROMEModelEditor:
                         param.add_(update)  # 重みを更新
     
     def _verify_edit(self, model, tokenizer, subject: str, target_fact: str) -> bool:
-        """編集が成功したかを検証"""
+        """
+        編集が成功したかを検証
+        
+        Args:
+            model: モデル
+            tokenizer: トークナイザー
+            subject: 主題
+            target_fact: 新しい事実
+            
+        Returns:
+            成功したかどうか
+        """
         prompt = f"{subject} is"
         inputs = tokenizer(prompt, return_tensors="pt")
         
-        if torch.cuda.is_available():
-            inputs = {k: v.cuda() for k, v in inputs.items()}
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
             
         outputs = model.generate(
             inputs.input_ids,
@@ -144,7 +202,30 @@ class ROMEModelEditor:
         return target_text.lower() in generated_text.lower()
         
     def _cache_edited_model(self, model_name: str, model: AutoModelForCausalLM):
-        """編集済みモデルをキャッシュ"""
-        cache_path = os.path.join(self.model_cache_dir, f"{model_name}_edited")
-        os.makedirs(cache_path, exist_ok=True)
-        model.save_pretrained(cache_path)
+        """
+        編集済みモデルをキャッシュ
+        
+        Args:
+            model_name: モデル名
+            model: 編集済みモデル
+        """
+        if self.cache_dir:
+            cache_path = os.path.join(self.cache_dir, f"{model_name}_edited")
+            os.makedirs(cache_path, exist_ok=True)
+            model.save_pretrained(cache_path)
+            print(f"Edited model saved to {cache_path}")
+    
+    def clear_cache(self):
+        """
+        モデルキャッシュをクリア
+        """
+        self.models = {}
+        self.tokenizers = {}
+        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+            
+        print("Model cache cleared")
