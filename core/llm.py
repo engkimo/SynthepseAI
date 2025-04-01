@@ -9,9 +9,11 @@ class LLM:
     def __init__(self, 
                  api_key: str = None, 
                  model: str = "gpt-4-turbo", 
-                 temperature: float = 0.7):
+                 temperature: float = 0.7,
+                 rome_model_editor = None):
         self.model = model
         self.temperature = temperature
+        self.rome_model_editor = rome_model_editor
         
         # Initialize the OpenAI client
         if api_key:
@@ -24,6 +26,37 @@ class LLM:
             raise ValueError("OpenAI API key not provided")
             
         self.client = OpenAI(api_key=openai_api_key)
+    
+    def set_rome_model_editor(self, rome_model_editor):
+        """ROMEモデル編集機能を設定"""
+        self.rome_model_editor = rome_model_editor
+    
+    def edit_knowledge(self, subject: str, target_fact: str, original_fact: str = None) -> bool:
+        """
+        ROMEを使用してモデルの知識を編集
+        
+        Args:
+            subject: 編集対象の主題
+            target_fact: 新しい事実
+            original_fact: 元の事実（省略可能）
+            
+        Returns:
+            成功したかどうか
+        """
+        if not self.rome_model_editor:
+            print("ROME model editor not set. Knowledge editing not available.")
+            return False
+            
+        from .rome_model_editor import EditRequest
+        
+        request = EditRequest(
+            subject=subject,
+            target_fact=target_fact,
+            original_fact=original_fact,
+            model_name=self.model if "gpt-" not in self.model else "gpt2"  # フォールバック
+        )
+        
+        return self.rome_model_editor.edit_knowledge(request)
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def generate_text(self, prompt: str) -> str:

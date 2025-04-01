@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from .tool_agent import ToolAgent
 from .task_database import TaskDatabase, Task, TaskStatus
 from .project_environment import ProjectEnvironment
+from .coat_reasoner import COATReasoner
 import re
 import os
 import sys
@@ -17,7 +18,8 @@ class AutoPlanAgent(ToolAgent):
         task_db: TaskDatabase, 
         workspace_dir: str,
         graph_rag=None,
-        modular_code_manager=None
+        modular_code_manager=None,
+        coat_reasoner=None
     ):
         super().__init__(name, description, llm)
         self.planner = None  # Will be set later
@@ -26,6 +28,7 @@ class AutoPlanAgent(ToolAgent):
         self.project_executor = None  # Will be set later
         self.graph_rag = graph_rag  # GraphRAGマネージャー
         self.modular_code_manager = modular_code_manager  # モジュラーコードマネージャー
+        self.coat_reasoner = coat_reasoner or (COATReasoner(llm) if llm else None)  # COAT推論機能
         
         self.system_prompt += " You are specialized in breaking down complex tasks into smaller steps, generating Python code to accomplish each step, and repairing failed steps."
         
@@ -203,7 +206,7 @@ class AutoPlanAgent(ToolAgent):
         return summary
     
     def repair_failed_task(self, task_id: str) -> bool:
-        """失敗したタスクを自動修復（学習機能強化版）"""
+        """失敗したタスクを自動修復（COAT推論と学習機能強化版）"""
         task = self.task_db.get_task(task_id)
         
         if task.status != TaskStatus.FAILED:
@@ -214,6 +217,58 @@ class AutoPlanAgent(ToolAgent):
         
         # プロジェクト環境を取得
         env = self._get_environment(task.plan_id)
+        
+        if self.coat_reasoner:
+            try:
+                print(f"Applying COAT reasoning to repair task {task_id}")
+                
+                fixed_code, coat_chain = self.coat_reasoner.apply_coat_reasoning(
+                    code=task.code,
+                    error_message=error_message
+                )
+                
+                if fixed_code and fixed_code != task.code:
+                    # 修正コードを保存
+                    self.task_db.update_task_code(task_id, fixed_code)
+                    
+                    # 修正したコードを実行
+                    execute_result = self.project_executor.execute(
+                        command="execute_task",
+                        task_id=task_id
+                    )
+                    
+                    if execute_result.success:
+                        print(f"Task {task_id} execution succeeded with COAT reasoning")
+                        # タスクのステータスを更新
+                        self.task_db.update_task(
+                            task_id=task_id,
+                            status=TaskStatus.COMPLETED,
+                            result=execute_result.result
+                        )
+                        
+                        # 成功した修正をGraphRAGに記録（学習）
+                        if self.graph_rag:
+                            coat_chain_str = "\n".join([
+                                f"Thought: {step.get('thought', '')}\n"
+                                f"Action: {step.get('action', '')}\n"
+                                f"Prediction: {step.get('prediction', '')}"
+                                for step in coat_chain
+                            ])
+                            
+                            self.graph_rag.store_error_pattern(
+                                error_message=error_message,
+                                error_type=self._classify_error(error_message),
+                                original_code=task.code,
+                                fixed_code=fixed_code,
+                                context=f"COAT reasoning:\n{coat_chain_str}\n\nTask: {task.description}"
+                            )
+                            print(f"Stored successful COAT reasoning pattern")
+                        
+                        return True
+                    else:
+                        print(f"COAT reasoning fix did not resolve the issue: {execute_result.error}")
+            except Exception as e:
+                print(f"Error applying COAT reasoning: {str(e)}")
         
         # ==== GraphRAGが利用可能な場合、過去の修正パターンを検索 ====
         if self.graph_rag:
