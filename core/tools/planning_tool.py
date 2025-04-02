@@ -250,12 +250,16 @@ class PlanningTool(BaseTool):
         3. Consider necessary libraries and external dependencies
         
         Return the tasks as a JSON array of objects with the following structure:
-        {{
-            "description": "Task description",
-            "dependencies": [], // List of previous task indices (0-based) that must be completed first
-            "required_libraries": [] // List of Python libraries that might be needed
-        }}
+        [
+            {{
+                "description": "Task description",
+                "dependencies": [], 
+                "required_libraries": []
+            }}
+        ]
         
+        IMPORTANT: Your response MUST contain a valid JSON array like the example above.
+        No explanations, markdown, or other text before or after the JSON.
         The tasks should be ordered logically, with earlier tasks coming before later dependent tasks.
         Include a first task to import all necessary libraries, and make sure to handle edge cases and errors.
         Aim for tasks that are atomic and focused on a single objective.
@@ -266,12 +270,24 @@ class PlanningTool(BaseTool):
         try:
             # JSONを抽出
             tasks_json = self._extract_json(response)
-            tasks = json.loads(tasks_json)
+            
+            try:
+                tasks = json.loads(tasks_json)
+            except json.JSONDecodeError as e:
+                print(f"JSON解析エラー: {str(e)}")
+                print(f"モデル出力: {response[:200]}...")
+                
+                default_task = {
+                    "description": f"目標「{goal}」に関する情報を収集し分析する",
+                    "dependencies": [],
+                    "required_libraries": []
+                }
+                tasks = [default_task]
             
             # タスクのフォーマット検証
             for task in tasks:
                 if "description" not in task:
-                    raise ValueError("Task missing 'description' field")
+                    task["description"] = "未指定のタスク"
                 if "dependencies" not in task:
                     task["dependencies"] = []
                 # 必要なライブラリがない場合は空リストを追加
@@ -280,7 +296,11 @@ class PlanningTool(BaseTool):
             
             return tasks
         except Exception as e:
-            raise ValueError(f"Failed to parse plan: {str(e)}")
+            print(f"プラン生成エラー: {str(e)}")
+            return [
+                {"description": f"「{goal}」についての情報を調査", "dependencies": [], "required_libraries": []},
+                {"description": f"「{goal}」の結果をまとめる", "dependencies": [0], "required_libraries": []}
+            ]
     
     def generate_python_script(self, task) -> str:
         """タスク用のPythonスクリプトを生成"""
@@ -574,15 +594,24 @@ if __name__ == "__main__":
     
     def _extract_json(self, text: str) -> str:
         """テキストからJSONを抽出"""
-        # JSON配列を検索
-        json_match = re.search(r'\[[\s\S]*\]', text)
+        json_pattern = r'\[\s*\{.*?\}\s*(?:,\s*\{.*?\}\s*)*\]'
+        json_match = re.search(json_pattern, text, re.DOTALL)
         if json_match:
             return json_match.group(0)
         
-        # JSON オブジェクトを検索
-        json_match = re.search(r'\{[\s\S]*\}', text)
+        json_match = re.search(r'\{\s*".*?"\s*:.*?\}', text, re.DOTALL)
         if json_match:
             return json_match.group(0)
+            
+        elements = re.findall(r'"description"\s*:\s*"(.*?)"', text, re.DOTALL)
+        if elements:
+            tasks = []
+            for i, desc in enumerate(elements):
+                tasks.append({
+                    "description": desc,
+                    "dependencies": [],
+                    "required_libraries": []
+                })
+            return json.dumps(tasks)
         
-        # JSONが見つからない場合は元のテキストを返す
-        return text
+        return '[]'
