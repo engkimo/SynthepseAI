@@ -1,4 +1,4 @@
-# SynthepseAI Agent
+# SynthepseAI
 
 ## Overview
 
