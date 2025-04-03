@@ -15,7 +15,7 @@ def main():
         workspace_dir=workspace_dir,
         knowledge_db_path=f"{workspace_dir}/knowledge_db.json",
         log_path=f"{workspace_dir}/thinking_log.jsonl",
-        use_local_model=True
+        device="cpu"
     )
     
     task = "簡単な計算機プログラムを作成してください"
