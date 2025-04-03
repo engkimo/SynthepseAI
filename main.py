@@ -8,11 +8,11 @@ from core.task_database import TaskDatabase
 from core.tools.planning_tool import PlanningTool
 from core.tools.python_project_execute import PythonProjectExecuteTool
 from core.tools.file_tool import FileTool
-# 新しいツールをインポート
 from core.tools.docker_execute import DockerExecuteTool
 from core.tools.system_tool import SystemTool
 from core.auto_plan_agent import AutoPlanAgent
 from core.planning_flow import PlanningFlow
+from core.persistent_thinking_ai import PersistentThinkingAI
 
 def main():
     parser = argparse.ArgumentParser(description='Run the AI Agent system')
@@ -38,6 +38,17 @@ def main():
     
     # ワークスペースディレクトリを作成
     os.makedirs(args.workspace, exist_ok=True)
+    
+    persistent_thinking_dir = os.path.join(args.workspace, 'persistent_thinking')
+    os.makedirs(persistent_thinking_dir, exist_ok=True)
+    persistent_thinking = PersistentThinkingAI(
+        model_name=config.get('model', 'gpt-4-turbo'),
+        workspace_dir=persistent_thinking_dir,
+        knowledge_db_path=os.path.join(persistent_thinking_dir, 'knowledge_db.json'),
+        log_path=os.path.join(persistent_thinking_dir, 'thinking_log.jsonl'),
+        use_local_model=config.get('use_local_model', False),
+        local_model_name=config.get('local_model_name', 'microsoft/phi-2')
+    )
     
     # デバッグモードが有効な場合のログ設定
     if args.debug:
@@ -68,7 +79,10 @@ def main():
         "An agent that automatically plans and executes tasks", 
         llm, 
         task_db,
-        args.workspace
+        args.workspace,
+        graph_rag=None,
+        modular_code_manager=None,
+        persistent_thinking=persistent_thinking  # 持続思考AIを渡す
     )
     agent.set_planner(planning_tool)
     agent.set_project_executor(project_executor)

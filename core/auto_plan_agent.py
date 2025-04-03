@@ -7,6 +7,7 @@ import re
 import os
 import sys
 import time
+import threading
 
 class AutoPlanAgent(ToolAgent):
     def __init__(
@@ -17,7 +18,8 @@ class AutoPlanAgent(ToolAgent):
         task_db: TaskDatabase, 
         workspace_dir: str,
         graph_rag=None,
-        modular_code_manager=None
+        modular_code_manager=None,
+        persistent_thinking=None
     ):
         super().__init__(name, description, llm)
         self.planner = None  # Will be set later
@@ -26,6 +28,7 @@ class AutoPlanAgent(ToolAgent):
         self.project_executor = None  # Will be set later
         self.graph_rag = graph_rag  # GraphRAGマネージャー
         self.modular_code_manager = modular_code_manager  # モジュラーコードマネージャー
+        self.persistent_thinking = persistent_thinking  # 持続思考AI
         
         self.system_prompt += " You are specialized in breaking down complex tasks into smaller steps, generating Python code to accomplish each step, and repairing failed steps."
         
@@ -46,7 +49,9 @@ class AutoPlanAgent(ToolAgent):
     
     def set_modular_code_manager(self, modular_code_manager):
         """モジュラーコードマネージャーを設定"""
-        self.modular_code_manager = modular_code_manager
+    def set_persistent_thinking(self, persistent_thinking):
+        """持続思考AIを設定"""
+        self.persistent_thinking = persistent_thinking
     
     def _get_environment(self, plan_id: str) -> ProjectEnvironment:
         """プロジェクト環境を取得（キャッシュがあればそれを使用）"""
@@ -199,6 +204,21 @@ class AutoPlanAgent(ToolAgent):
         
         # プロジェクトの依存関係ファイルを更新
         env.update_requirements_file()
+        
+        if self.persistent_thinking:
+            try:
+                plan_tasks = self.task_db.get_tasks_by_plan(plan_id)
+                task_descriptions = [task.description for task in plan_tasks]
+                task_results = [task.result for task in plan_tasks if task.status == TaskStatus.COMPLETED]
+                
+                def run_thinking():
+                    self.persistent_thinking.execute_task(goal)
+                    self.persistent_thinking.continuous_thinking(duration_seconds=60)
+                
+                threading.Thread(target=run_thinking).start()
+                print("持続思考AIによる継続的思考を開始しました（バックグラウンド実行中）")
+            except Exception as e:
+                print(f"持続思考の開始中にエラーが発生しました: {str(e)}")
         
         return summary
     
