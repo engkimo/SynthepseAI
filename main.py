@@ -42,12 +42,12 @@ def main():
     persistent_thinking_dir = os.path.join(args.workspace, 'persistent_thinking')
     os.makedirs(persistent_thinking_dir, exist_ok=True)
     persistent_thinking = PersistentThinkingAI(
-        model_name=config.get('model', 'gpt-4-turbo'),
+        model_name=config.get('local_model_name', 'microsoft/phi-2'),
         workspace_dir=persistent_thinking_dir,
         knowledge_db_path=os.path.join(persistent_thinking_dir, 'knowledge_db.json'),
         log_path=os.path.join(persistent_thinking_dir, 'thinking_log.jsonl'),
-        use_local_model=config.get('use_local_model', False),
-        local_model_name=config.get('local_model_name', 'microsoft/phi-2')
+        device=config.get('device', 'cpu'),
+        use_compatibility_mode=True  # 互換モードを有効化
     )
     
     # デバッグモードが有効な場合のログ設定
