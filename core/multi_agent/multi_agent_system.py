@@ -27,7 +27,11 @@ class MultiAgentSystem:
         graph_path: str = "./knowledge_graph.json",
         tavily_api_key: Optional[str] = None,
         firecrawl_api_key: Optional[str] = None,
-        use_compatibility_mode: bool = False
+        use_compatibility_mode: bool = False,
+        config: Optional[Dict[str, Any]] = None,
+        rome_editor=None,
+        coat_reasoner=None,
+        rgcn_processor=None
     ):
         """
         マルチエージェントシステムの初期化
@@ -40,6 +44,10 @@ class MultiAgentSystem:
             tavily_api_key: TavilyのAPIキー
             firecrawl_api_key: FirecrawlのAPIキー
             use_compatibility_mode: 互換モードを使用するかどうか
+            config: 追加設定情報
+            rome_editor: ROMEモデルエディタ
+            coat_reasoner: COAT推論機能
+            rgcn_processor: R-GCNプロセッサ
         """
         self.agents = {}
         self.coordinator = None  # 初期化時はNone、_initialize_agentsで設定
@@ -50,6 +58,10 @@ class MultiAgentSystem:
         self.tavily_api_key = tavily_api_key
         self.firecrawl_api_key = firecrawl_api_key
         self.use_compatibility_mode = use_compatibility_mode
+        self.config = config or {}
+        self.rome_editor = rome_editor
+        self.coat_reasoner = coat_reasoner
+        self.rgcn_processor = rgcn_processor
         
         self._initialize_agents()
         
@@ -58,6 +70,8 @@ class MultiAgentSystem:
     
     def _initialize_agents(self):
         """エージェントを初期化"""
+        self.config = self.config or {}
+        
         coordinator = CoordinatorAgent(llm=self.llm)
         self.coordinator = coordinator
         self.agents[coordinator.agent_id] = coordinator
@@ -74,10 +88,13 @@ class MultiAgentSystem:
         reasoning_agent = ReasoningAgent(llm=self.llm)
         self.agents[reasoning_agent.agent_id] = reasoning_agent
         
+        tool_config = {
+            "use_web_tools": self.tavily_api_key is not None or self.firecrawl_api_key is not None
+        }
+        
         tool_executor_agent = ToolExecutorAgent(
             llm=self.llm,
-            tavily_api_key=self.tavily_api_key,
-            firecrawl_api_key=self.firecrawl_api_key
+            config=tool_config
         )
         self.agents[tool_executor_agent.agent_id] = tool_executor_agent
         
