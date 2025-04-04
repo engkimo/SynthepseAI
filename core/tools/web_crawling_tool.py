@@ -39,59 +39,74 @@ class WebCrawlingTool(BaseTool):
             if url:
                 return self._fetch_url(url)
             elif query:
-                try:
-                    if self.tavily_api_key:
-                        return self._search_with_tavily(query, search_depth)
-                except Exception as e:
-                    logging.warning(f"Tavily検索に失敗しました: {str(e)}。Firecrawlにフォールバックします。")
+                if not self.tavily_api_key and not self.firecrawl_api_key:
+                    return ToolResult(False, error="有効なAPIキーが設定されていません")
                 
-                try:
-                    if self.firecrawl_api_key:
-                        return self._search_with_firecrawl(query)
-                except Exception as e:
-                    return ToolResult(False, error=f"Web検索に失敗しました: {str(e)}")
-                    
-                return ToolResult(False, error="有効なAPIキーが設定されていません")
+                if self.tavily_api_key:
+                    try:
+                        tavily_result = self._search_with_tavily(query, search_depth)
+                        if tavily_result.success:
+                            return tavily_result
+                        logging.warning(f"Tavily検索に失敗しました: {tavily_result.error}。Firecrawlにフォールバックします。")
+                    except Exception as e:
+                        logging.warning(f"Tavily検索に失敗しました: {str(e)}。Firecrawlにフォールバックします。")
+                
+                if self.firecrawl_api_key:
+                    try:
+                        firecrawl_result = self._search_with_firecrawl(query)
+                        if firecrawl_result.success:
+                            return firecrawl_result
+                        return ToolResult(False, error=f"Firecrawl検索に失敗しました: {firecrawl_result.error}")
+                    except Exception as e:
+                        return ToolResult(False, error=f"Firecrawl検索に失敗しました: {str(e)}")
+                
+                return ToolResult(False, error="Web検索に失敗しました。利用可能なAPIがないか、すべてのAPIが失敗しました。")
             else:
                 return ToolResult(False, error="クエリまたはURLが必要です")
         except Exception as e:
-            return ToolResult(False, error=str(e))
+            return ToolResult(False, error=f"Web検索実行エラー: {str(e)}")
             
     def _search_with_tavily(self, query, search_depth="basic"):
         """TavilyのAPIを使用して検索"""
+        if not self.tavily_api_key:
+            return ToolResult(False, error="Tavily APIキーが設定されていません")
+            
         try:
-            import tavily
+            from tavily import TavilyClient
         except ImportError:
             return ToolResult(False, error="tavily-pythonパッケージがインストールされていません")
         
-        tavily.api_key = self.tavily_api_key
-        
-        search_params = {
-            "query": query,
-            "search_depth": search_depth,
-            "max_results": self.max_results,
-            "include_domains": [],  # 特定のドメインに限定する場合
-            "exclude_domains": [],  # 特定のドメインを除外する場合
-        }
-        
-        response = tavily.search(**search_params)
-        
-        results = []
-        for result in response.get("results", []):
-            results.append({
-                "title": result.get("title", ""),
-                "url": result.get("url", ""),
-                "content": result.get("content", ""),
-                "score": result.get("score", 0),
-                "source": "tavily"
-            })
+        try:
+            client = TavilyClient(api_key=self.tavily_api_key)
             
-        return ToolResult(True, {
-            "query": query,
-            "results": results,
-            "search_depth": search_depth,
-            "total_results": len(results)
-        })
+            search_params = {
+                "query": query,
+                "search_depth": search_depth,
+                "max_results": self.max_results,
+                "include_domains": [],  # 特定のドメインに限定する場合
+                "exclude_domains": [],  # 特定のドメインを除外する場合
+            }
+            
+            response = client.search(**search_params)
+            
+            results = []
+            for result in response.get("results", []):
+                results.append({
+                    "title": result.get("title", ""),
+                    "url": result.get("url", ""),
+                    "content": result.get("content", ""),
+                    "score": result.get("score", 0),
+                    "source": "tavily"
+                })
+                
+            return ToolResult(True, {
+                "query": query,
+                "results": results,
+                "search_depth": search_depth,
+                "total_results": len(results)
+            })
+        except Exception as e:
+            return ToolResult(False, error=f"Tavily検索エラー: {str(e)}")
         
     def _search_with_firecrawl(self, query):
         """FirecrawlのAPIを使用して検索"""
