@@ -2,7 +2,7 @@
 
 ## Overview
 
-SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on an extended version of the manus architecture and incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience.
+SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on an extended version of the manus architecture and incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience. The system now implements the LLLM (Larger LLM) concept, integrating multiple technologies to create an intelligent ecosystem.
 
 ### Key Features
 
@@ -11,6 +11,10 @@ SynthepseAI Agent is an autonomous AI agent system with self-correction capabili
 - **Learning from Experience**: Learns from past error patterns and successful code implementations to apply to new tasks.
 - **Module Reuse**: Extracts reusable modules from successful code to utilize in new tasks.
 - **Isolated Execution Environments**: Each project runs in its own virtual environment to prevent dependency conflicts.
+- **LLLM Integration**: Combines LLM with humans, tools, and multiple LLM networks to create an enhanced intelligent system.
+- **Knowledge Editing (ROME)**: Directly edits the internal knowledge of language models to update facts and information.
+- **Self-Reflective Reasoning (COAT)**: Implements Chain-of-Action-Thought for improved reasoning and self-correction.
+- **Knowledge Graph Processing (R-GCN)**: Uses Relational Graph Convolutional Networks for sophisticated knowledge representation and retrieval.
 
 ## System Requirements
 
@@ -26,6 +30,10 @@ weaviate-client>=3.15.0
 tenacity>=8.0.0
 python-dotenv>=1.0.0
 sqlite3
+torch>=2.0.0
+transformers>=4.30.0
+dgl>=1.0.0
+networkx>=2.8.0
 ```
 
 ## Installation
@@ -387,12 +395,18 @@ flowchart TD
 ### 4. Learning System
 - **GraphRAGManager**: For learning and retrieving error and code patterns.
 - **ModularCodeManager**: For managing reusable code modules.
+- **ROMEModelEditor**: For editing internal knowledge of language models.
+- **COATReasoner**: For implementing self-reflective reasoning chains.
+- **RGCNProcessor**: For processing knowledge graphs using relational graph networks.
 
 ### 5. Database
 - **TaskDatabase**: An SQLite-based task and plan manager.
 
 ### 6. Environment Management
 - **ProjectEnvironment**: Manages virtual environments on a per-project basis.
+
+### 7. LLLM Technologies
+- **PersistentThinkingAI**: Core integration of ROME, COAT, and R-GCN for continuous thinking.
 
 ## Workflow
 
@@ -462,6 +476,15 @@ Error: OpenAI API connection failed...
 ModuleNotFoundError: No module named 'some_module'
 ```
 *Solution*: Manually install the required package or use the `--debug` flag for more details.
+
+#### DGL Import Error
+```
+FileNotFoundError: Cannot find DGL C++ graphbolt library
+```
+*Solution*: 互換モードを有効にするには、以下のいずれかの方法を使用してください：
+1. 環境変数を設定: `export DGL_COMPATIBILITY_MODE=1`
+2. 提供されているスクリプトを実行: `source set_env.sh`
+3. main.pyでは既に`use_compatibility_mode=True`が設定されています
 
 #### SQLite Database Error
 ```

@@ -3,15 +3,38 @@ import json
 import os
 import time
 
-try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    import dgl
-    from dgl.nn.pytorch import RelGraphConv
-    TORCH_DGL_AVAILABLE = True
-except ImportError:
-    print("PyTorch or DGL not available. R-GCN functionality will be limited.")
+DGL_COMPATIBILITY_MODE = os.environ.get('DGL_COMPATIBILITY_MODE', '0') == '1'
+
+if not DGL_COMPATIBILITY_MODE:
+    try:
+        import torch
+        import torch.nn as nn
+        import torch.nn.functional as F
+        import dgl
+        from dgl.nn.pytorch import RelGraphConv
+        TORCH_DGL_AVAILABLE = True
+    except ImportError:
+        print("PyTorch or DGL not available. R-GCN functionality will be limited.")
+        TORCH_DGL_AVAILABLE = False
+        
+        try:
+            import networkx as nx
+            NX_AVAILABLE = True
+        except ImportError:
+            print("NetworkX not available. Using basic graph implementation.")
+            NX_AVAILABLE = False
+    except Exception as e:
+        print(f"Error importing DGL: {str(e)}")
+        TORCH_DGL_AVAILABLE = False
+        
+        try:
+            import networkx as nx
+            NX_AVAILABLE = True
+        except ImportError:
+            print("NetworkX not available. Using basic graph implementation.")
+            NX_AVAILABLE = False
+else:
+    print("DGL compatibility mode enabled via environment variable. Using basic implementation.")
     TORCH_DGL_AVAILABLE = False
     
     try:
@@ -26,16 +49,33 @@ class RGCNProcessor:
     R-GCN（Relational Graph Convolutional Network）を使用した知識グラフ処理
     """
     
-    def __init__(self, device: Optional[str] = None, hidden_dim: int = 64):
+    def __init__(self, device: Optional[str] = None, hidden_dim: int = 64, use_compatibility_mode: bool = False):
         """
         R-GCNプロセッサの初期化
         
         Args:
             device: 使用するデバイス（'cuda', 'mps', 'cpu'）
             hidden_dim: 隠れ層の次元数
+            use_compatibility_mode: 互換モードを使用するかどうか
         """
+        self.entity_map = {}  # エンティティ名からIDへのマッピング
+        self.relation_map = {}  # 関係名からIDへのマッピング
+        self.id_to_entity = {}  # IDからエンティティ名へのマッピング
+        self.id_to_relation = {}  # IDから関係名へのマッピング
+        
+        self.model = None
+        self.optimizer = None
+        
+        self.graph = None
+        self.nx_graph = None
+        
         self.device = "cpu"
         self.hidden_dim = hidden_dim
+        self.use_compatibility_mode = use_compatibility_mode or DGL_COMPATIBILITY_MODE
+        
+        if self.use_compatibility_mode:
+            print("R-GCN running in compatibility mode (forced by user or environment variable)")
+            return
         
         if TORCH_DGL_AVAILABLE:
             if device is None:
@@ -49,17 +89,6 @@ class RGCNProcessor:
             print(f"R-GCN using device: {self.device}")
         else:
             print("R-GCN running in compatibility mode (PyTorch/DGL not available)")
-        
-        self.entity_map = {}  # エンティティ名からIDへのマッピング
-        self.relation_map = {}  # 関係名からIDへのマッピング
-        self.id_to_entity = {}  # IDからエンティティ名へのマッピング
-        self.id_to_relation = {}  # IDから関係名へのマッピング
-        
-        self.model = None
-        self.optimizer = None
-        
-        self.graph = None
-        self.nx_graph = None
     
     def build_graph(self, triples: List[Tuple[str, str, str]]):
         """
