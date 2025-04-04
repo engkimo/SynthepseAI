@@ -477,6 +477,15 @@ ModuleNotFoundError: No module named 'some_module'
 ```
 *Solution*: Manually install the required package or use the `--debug` flag for more details.
 
+#### DGL Import Error
+```
+FileNotFoundError: Cannot find DGL C++ graphbolt library
+```
+*Solution*: 互換モードを有効にするには、以下のいずれかの方法を使用してください：
+1. 環境変数を設定: `export DGL_COMPATIBILITY_MODE=1`
+2. 提供されているスクリプトを実行: `source set_env.sh`
+3. main.pyでは既に`use_compatibility_mode=True`が設定されています
+
 #### SQLite Database Error
 ```
 sqlite3.OperationalError: no such table...
