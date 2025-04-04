@@ -27,7 +27,8 @@ class PersistentThinkingAI:
         workspace_dir: str = "./workspace",
         device: Optional[str] = None,
         knowledge_db_path: str = "./knowledge_db.json",
-        log_path: str = "./thinking_log.jsonl"
+        log_path: str = "./thinking_log.jsonl",
+        use_compatibility_mode: bool = False
     ):
         """
         持続思考型AIの初期化
@@ -38,8 +39,11 @@ class PersistentThinkingAI:
             device: 使用するデバイス（'cuda', 'mps', 'cpu'）
             knowledge_db_path: 知識データベースのパス
             log_path: 思考ログのパス
+            use_compatibility_mode: DGL/PyTorch非依存の互換モードを使用するかどうか
         """
         api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
+        
+        self.use_compatibility_mode = use_compatibility_mode
         
         self.llm = LLM(
             api_key=api_key,
@@ -51,7 +55,7 @@ class PersistentThinkingAI:
         
         self.coat_reasoner = COATReasoner(self.llm)
         
-        self.rgcn_processor = RGCNProcessor(device=device)
+        self.rgcn_processor = RGCNProcessor(device=device, use_compatibility_mode=self.use_compatibility_mode)
         
         self.task_db = TaskDatabase(":memory:")
         self.agent = AutoPlanAgent(

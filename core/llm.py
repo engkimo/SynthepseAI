@@ -7,7 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 class LLM:
     def __init__(self, 
-                 api_key: str = None, 
+                 api_key: Optional[str] = None, 
                  model: str = "gpt-4-turbo", 
                  temperature: float = 0.7):
         self.model = model
@@ -118,3 +118,48 @@ class LLM:
         except Exception as e:
             print(f"Error analyzing error: {str(e)}")
             raise
+            
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def edit_knowledge(self, subject: str, target_fact: str, original_fact: Optional[str] = None) -> bool:
+        """
+        モデルの知識を編集するためのインターフェース
+        
+        Args:
+            subject: 編集対象の主題
+            target_fact: 新しい事実
+            original_fact: 元の事実（オプション）
+            
+        Returns:
+            編集が成功したかどうか
+        """
+        try:
+            prompt = f"""
+            以下の知識を学習してください：
+            
+            主題: {subject}
+            新しい事実: {target_fact}
+            """
+            
+            if original_fact:
+                prompt += f"""
+                以前の事実: {original_fact}
+                
+                以前の事実を新しい事実に置き換えてください。
+                """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "あなたは新しい知識を学習できるアシスタントです。"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2
+            )
+            
+            confirmation = response.choices[0].message.content
+            success = "理解" in confirmation or "学習" in confirmation or "更新" in confirmation
+            
+            return success
+        except Exception as e:
+            print(f"知識編集エラー: {str(e)}")
+            return False
