@@ -87,7 +87,23 @@ python main.py --goal "Process a text file and compute statistics" --debug
 ```bash
 # Execute a sample task
 python example.py
+
+# Execute the enhanced persistent thinking example
+python examples/enhanced_thinking_example.py
 ```
+
+### Web Crawling and Knowledge Integration
+
+To use the web crawling functionality, you need to set up API keys for Tavily and/or Firecrawl in your config.json file:
+
+```json
+{
+  "tavily_api_key": "your_tavily_api_key_here",
+  "firecrawl_api_key": "your_firecrawl_api_key_here"
+}
+```
+
+The EnhancedPersistentThinkingAI will automatically use these APIs to search for information and integrate it into its knowledge base.
 
 ### Enabling the Learning Feature
 
@@ -406,7 +422,8 @@ flowchart TD
 - **ProjectEnvironment**: Manages virtual environments on a per-project basis.
 
 ### 7. LLLM Technologies
-- **PersistentThinkingAI**: Core integration of ROME, COAT, and R-GCN for continuous thinking.
+- **EnhancedPersistentThinkingAI**: Advanced integration of ROME, COAT, and R-GCN for continuous thinking with background processing and web knowledge integration.
+- **WebCrawlingTool**: Tool for retrieving information from the web using Tavily and Firecrawl APIs.
 
 ## Workflow
 
