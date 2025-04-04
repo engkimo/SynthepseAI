@@ -120,19 +120,33 @@ SynthepseAI/
 ├── example.py                 # Sample execution script
 ├── config.json                # Configuration file
 ├── requirements.txt           # Dependency list
-├── docker-compose.yml # Weaviate configuration file
+├── docker-compose.yml         # Weaviate configuration file
 ├── core/                      # Core modules
 │   ├── auto_plan_agent.py     # Self-correcting agent
 │   ├── base_agent.py          # Base agent
 │   ├── base_flow.py           # Base flow
 │   ├── graph_rag_manager.py   # GraphRAG manager
 │   ├── llm.py                 # LLM integration
+│   ├── lllm_multi_agent_flow.py # LLLM multi-agent flow
 │   ├── modular_code_manager.py # Module manager
 │   ├── planning_flow.py       # Planning flow
 │   ├── project_environment.py # Project environment
+│   ├── rome_model_editor.py   # ROME model editor
+│   ├── coat_reasoner.py       # COAT reasoner
+│   ├── rgcn_processor.py      # R-GCN processor
+│   ├── enhanced_persistent_thinking_ai.py # Enhanced persistent thinking AI
 │   ├── script_templates.py    # Script templates
 │   ├── task_database.py       # Task database
 │   ├── tool_agent.py          # Tool agent
+│   ├── multi_agent/           # Multi-agent system
+│   │   ├── agent_base.py      # Base class for all agents
+│   │   ├── coordinator_agent.py # Coordinator agent
+│   │   ├── knowledge_agent.py # Knowledge agent
+│   │   ├── reasoning_agent.py # Reasoning agent
+│   │   ├── tool_executor_agent.py # Tool executor agent
+│   │   ├── domain_expert_agent.py # Domain expert agent
+│   │   ├── evaluation_agent.py # Evaluation agent
+│   │   └── multi_agent_system.py # Multi-agent system
 │   └── tools/                 # Tool modules
 │       ├── base_tool.py       # Base tool
 │       ├── file_tool.py       # File operations
@@ -141,6 +155,7 @@ SynthepseAI/
 │       ├── python_execute.py  # Python execution
 │       ├── python_project_execute.py # Project environment execution
 │       ├── docker_execute.py  # Docker execution
+│       ├── web_crawling_tool.py # Web crawling tool
 │       └── system_tool.py     # System operations
 └── workspace/                 # Working directory
     ├── modules/               # Reusable modules
@@ -389,6 +404,50 @@ flowchart TD
     class ToolSelect decision
 ```
 
+### LLLM Multi-Agent Architecture
+
+```mermaid
+flowchart TD
+    title[LLLM Multi-Agent Architecture]
+    
+    %% Main Components
+    User[User] --> LLLMFlow[LLLM Multi-Agent Flow]
+    LLLMFlow --> MultiAgentSys[Multi-Agent System]
+    
+    %% Core Technologies
+    ROME[ROME Model Editor] --> LLLMFlow
+    COAT[COAT Reasoner] --> LLLMFlow
+    RGCN[R-GCN Processor] --> LLLMFlow
+    
+    %% Agent Types
+    MultiAgentSys --> Coordinator[Coordinator Agent]
+    
+    Coordinator --> Knowledge[Knowledge Agent]
+    Coordinator --> Reasoning[Reasoning Agent]
+    Coordinator --> ToolExec[Tool Executor Agent]
+    Coordinator --> DomainExp[Domain Expert Agent]
+    Coordinator --> Evaluation[Evaluation Agent]
+    
+    %% Agent Interactions
+    Knowledge <--> Reasoning
+    Reasoning <--> ToolExec
+    ToolExec <--> DomainExp
+    DomainExp <--> Evaluation
+    Evaluation <--> Knowledge
+    
+    %% External Systems
+    ToolExec --> ExternalTools[External Tools]
+    Knowledge --> KnowledgeBase[Knowledge Base]
+    
+    %% Styling
+    classDef default fill:#f0f0ff,stroke:#333,stroke-width:1px
+    classDef title fill:none,stroke:none,color:#333,font-size:18px
+    classDef tech fill:#e6f7ff,stroke:#333,stroke-width:1px
+    
+    class title title
+    class ROME,COAT,RGCN tech
+```
+
 ## Main Components
 
 ### 1. Agent System
@@ -421,7 +480,16 @@ flowchart TD
 ### 6. Environment Management
 - **ProjectEnvironment**: Manages virtual environments on a per-project basis.
 
-### 7. LLLM Technologies
+### 7. LLLM Multi-Agent System
+- **LLLMMultiAgentFlow**: Orchestrates the multi-agent system, integrating ROME, COAT, and R-GCN technologies.
+- **MultiAgentSystem**: Core system managing agent communication and collaboration.
+- **MultiAgentBase**: Base class for all specialized agents in the LLLM ecosystem.
+- **CoordinatorAgent**: Central agent that manages task distribution and agent coordination.
+- **KnowledgeAgent**: Specialized agent for knowledge management and retrieval.
+- **ReasoningAgent**: Agent focused on complex reasoning and problem-solving.
+- **ToolExecutorAgent**: Agent responsible for executing external tools and processing results.
+- **DomainExpertAgent**: Agent with specialized knowledge in specific domains.
+- **EvaluationAgent**: Agent that evaluates the quality and correctness of outputs.
 - **EnhancedPersistentThinkingAI**: Advanced integration of ROME, COAT, and R-GCN for continuous thinking with background processing and web knowledge integration.
 - **WebCrawlingTool**: Tool for retrieving information from the web using Tavily and Firecrawl APIs.
 
