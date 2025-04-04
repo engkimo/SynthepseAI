@@ -85,17 +85,17 @@ class LLLMMultiAgentFlow(BaseFlow):
     
     def _init_multi_agent_system(self) -> MultiAgentSystem:
         """マルチエージェントシステムの初期化"""
-        tavily_api_key = self.config.get("tavily_api_key")
-        firecrawl_api_key = self.config.get("firecrawl_api_key")
+        agent_config = {
+            "workspace_dir": self.workspace_dir,
+            "use_web_tools": "tavily_api_key" in self.config or "firecrawl_api_key" in self.config
+        }
         
         multi_agent_system = MultiAgentSystem(
             llm=self.llm,
-            workspace_dir=self.workspace_dir,
+            config=agent_config,
             rome_editor=self.rome_editor,
             coat_reasoner=self.coat_reasoner,
-            rgcn_processor=self.rgcn_processor,
-            tavily_api_key=tavily_api_key,
-            firecrawl_api_key=firecrawl_api_key
+            rgcn_processor=self.rgcn_processor
         )
         
         return multi_agent_system
