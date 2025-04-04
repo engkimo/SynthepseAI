@@ -71,6 +71,7 @@ class RGCNProcessor:
         
         self.device = "cpu"
         self.hidden_dim = hidden_dim
+
         self.use_compatibility_mode = use_compatibility_mode or DGL_COMPATIBILITY_MODE
         
         if self.use_compatibility_mode:

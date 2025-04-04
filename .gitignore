@@ -1,4 +1,4 @@
-# Byte-compiled / optimized / DLL files
+    # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -308,4 +308,4 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
-workspace/
+# workspace/
