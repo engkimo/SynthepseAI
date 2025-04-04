@@ -58,12 +58,24 @@ class RGCNProcessor:
             hidden_dim: 隠れ層の次元数
             use_compatibility_mode: 互換モードを使用するかどうか
         """
+        self.entity_map = {}  # エンティティ名からIDへのマッピング
+        self.relation_map = {}  # 関係名からIDへのマッピング
+        self.id_to_entity = {}  # IDからエンティティ名へのマッピング
+        self.id_to_relation = {}  # IDから関係名へのマッピング
+        
+        self.model = None
+        self.optimizer = None
+        
+        self.graph = None
+        self.nx_graph = None
+        
         self.device = "cpu"
         self.hidden_dim = hidden_dim
-        self.use_compatibility_mode = use_compatibility_mode
+
+        self.use_compatibility_mode = use_compatibility_mode or DGL_COMPATIBILITY_MODE
         
-        if use_compatibility_mode:
-            print("R-GCN running in compatibility mode (forced by user)")
+        if self.use_compatibility_mode:
+            print("R-GCN running in compatibility mode (forced by user or environment variable)")
             return
         
         if TORCH_DGL_AVAILABLE:
@@ -78,17 +90,6 @@ class RGCNProcessor:
             print(f"R-GCN using device: {self.device}")
         else:
             print("R-GCN running in compatibility mode (PyTorch/DGL not available)")
-        
-        self.entity_map = {}  # エンティティ名からIDへのマッピング
-        self.relation_map = {}  # 関係名からIDへのマッピング
-        self.id_to_entity = {}  # IDからエンティティ名へのマッピング
-        self.id_to_relation = {}  # IDから関係名へのマッピング
-        
-        self.model = None
-        self.optimizer = None
-        
-        self.graph = None
-        self.nx_graph = None
     
     def build_graph(self, triples: List[Tuple[str, str, str]]):
         """
