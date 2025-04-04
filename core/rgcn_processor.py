@@ -3,15 +3,38 @@ import json
 import os
 import time
 
-try:
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    import dgl
-    from dgl.nn.pytorch import RelGraphConv
-    TORCH_DGL_AVAILABLE = True
-except ImportError:
-    print("PyTorch or DGL not available. R-GCN functionality will be limited.")
+DGL_COMPATIBILITY_MODE = os.environ.get('DGL_COMPATIBILITY_MODE', '0') == '1'
+
+if not DGL_COMPATIBILITY_MODE:
+    try:
+        import torch
+        import torch.nn as nn
+        import torch.nn.functional as F
+        import dgl
+        from dgl.nn.pytorch import RelGraphConv
+        TORCH_DGL_AVAILABLE = True
+    except ImportError:
+        print("PyTorch or DGL not available. R-GCN functionality will be limited.")
+        TORCH_DGL_AVAILABLE = False
+        
+        try:
+            import networkx as nx
+            NX_AVAILABLE = True
+        except ImportError:
+            print("NetworkX not available. Using basic graph implementation.")
+            NX_AVAILABLE = False
+    except Exception as e:
+        print(f"Error importing DGL: {str(e)}")
+        TORCH_DGL_AVAILABLE = False
+        
+        try:
+            import networkx as nx
+            NX_AVAILABLE = True
+        except ImportError:
+            print("NetworkX not available. Using basic graph implementation.")
+            NX_AVAILABLE = False
+else:
+    print("DGL compatibility mode enabled via environment variable. Using basic implementation.")
     TORCH_DGL_AVAILABLE = False
     
     try:
