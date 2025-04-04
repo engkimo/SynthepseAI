@@ -13,6 +13,11 @@ from core.tools.system_tool import SystemTool
 from core.auto_plan_agent import AutoPlanAgent
 from core.planning_flow import PlanningFlow
 from core.enhanced_persistent_thinking_ai import EnhancedPersistentThinkingAI
+from core.lllm_multi_agent_flow import LLLMMultiAgentFlow
+from core.multi_agent.multi_agent_system import MultiAgentSystem
+from core.rome_model_editor import ROMEModelEditor
+from core.coat_reasoner import COATReasoner
+from core.rgcn_processor import RGCNProcessor
 
 def main():
     parser = argparse.ArgumentParser(description='Run the AI Agent system')
@@ -92,17 +97,37 @@ def main():
     agent.available_tools.add_tool(docker_tool)
     agent.available_tools.add_tool(system_tool)
     
-    # フローの初期化
-    flow = PlanningFlow(llm, task_db)
-    flow.add_agent("auto_plan", agent)
-    flow.set_planning_tool(planning_tool)
+    planning_flow = PlanningFlow(llm, task_db)
+    planning_flow.add_agent("auto_plan", agent)
+    planning_flow.set_planning_tool(planning_tool)
+    
+    lllm_flow = LLLMMultiAgentFlow(
+        llm=llm,
+        task_db=task_db,
+        workspace_dir=args.workspace,
+        config={
+            "device": config.get("device", "cpu"),
+            "tavily_api_key": config.get("tavily_api_key"),
+            "firecrawl_api_key": config.get("firecrawl_api_key"),
+            "rgcn_hidden_dim": config.get("rgcn_hidden_dim", 64),
+            "use_compatibility_mode": config.get("use_compatibility_mode", True)
+        }
+    )
     
     # ゴールが指定されている場合はフローを実行
     if args.goal:
         print(f"Starting execution with goal: '{args.goal}'")
         print(f"Working directory: {args.workspace}")
         
-        result = flow.execute(args.goal)
+        use_lllm = config.get("use_lllm_flow", True)
+        
+        if use_lllm:
+            print("Using LLLM Multi-Agent Flow")
+            result = lllm_flow.execute(args.goal)
+        else:
+            print("Using Traditional Planning Flow")
+            result = planning_flow.execute(args.goal)
+            
         print(result)
     else:
         print("Please provide a goal using the --goal argument")
