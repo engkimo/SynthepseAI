@@ -298,6 +298,30 @@ class MultiAgentSystem:
             time.sleep(0.1)  # 短い待機時間
             
         return {"error": "タスクが完了しませんでした", "task_id": task_id}
+        
+    def wait_for_task_result(self, task_id: str, timeout: float = 30.0) -> Dict[str, Any]:
+        """
+        タスク結果を待機
+        
+        Args:
+            task_id: タスクID
+            timeout: タイムアウト（秒）
+            
+        Returns:
+            タスク結果
+        """
+        result = self.run_until_completion(task_id, max_iterations=int(timeout * 10), timeout=timeout)
+        
+        if "error" in result:
+            return {
+                "success": False,
+                "error": result["error"]
+            }
+            
+        return {
+            "success": True,
+            "result": result
+        }
     
     def add_knowledge(self, subject: str, fact: str, confidence: float = 0.9) -> Dict[str, Any]:
         """

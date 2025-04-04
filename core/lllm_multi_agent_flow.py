@@ -146,8 +146,9 @@ class LLLMMultiAgentFlow(BaseFlow):
             }
             
             task_id = self.multi_agent_system.create_task(
-                task=plan_task,
-                agent_id="coordinator_agent"
+                task_type="generate_plan",
+                content=plan_task,
+                target_agents=["coordinator_agent"]
             )
             
             result = self.multi_agent_system.wait_for_task_result(task_id, timeout=60)
@@ -258,8 +259,9 @@ class LLLMMultiAgentFlow(BaseFlow):
             }
             
             task_id = self.multi_agent_system.create_task(
-                task=execution_task,
-                agent_id=agent_id
+                task_type="execute_task",
+                content=execution_task,
+                target_agents=[agent_id]
             )
             
             result = self.multi_agent_system.wait_for_task_result(task_id, timeout=120)
@@ -332,8 +334,9 @@ class LLLMMultiAgentFlow(BaseFlow):
         }
         
         task_id = self.multi_agent_system.create_task(
-            task=analysis_task,
-            agent_id="reasoning_agent"
+            task_type="analyze_task",
+            content=analysis_task,
+            target_agents=["reasoning_agent"]
         )
         
         result = self.multi_agent_system.wait_for_task_result(task_id, timeout=30)
@@ -397,8 +400,9 @@ class LLLMMultiAgentFlow(BaseFlow):
         }
         
         task_id = self.multi_agent_system.create_task(
-            task=repair_task,
-            agent_id="reasoning_agent"
+            task_type="repair_task",
+            content=repair_task,
+            target_agents=["reasoning_agent"]
         )
         
         result = self.multi_agent_system.wait_for_task_result(task_id, timeout=60)
@@ -421,8 +425,9 @@ class LLLMMultiAgentFlow(BaseFlow):
             }
             
             exec_task_id = self.multi_agent_system.create_task(
-                task=execution_task,
-                agent_id="tool_executor_agent"
+                task_type="execute_code",
+                content=execution_task,
+                target_agents=["tool_executor_agent"]
             )
             
             exec_result = self.multi_agent_system.wait_for_task_result(exec_task_id, timeout=60)
@@ -477,8 +482,9 @@ class LLLMMultiAgentFlow(BaseFlow):
         }
         
         task_id = self.multi_agent_system.create_task(
-            task=summary_task,
-            agent_id="coordinator_agent"
+            task_type="generate_summary",
+            content=summary_task,
+            target_agents=["coordinator_agent"]
         )
         
         result = self.multi_agent_system.wait_for_task_result(task_id, timeout=30)
