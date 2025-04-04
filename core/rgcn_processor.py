@@ -26,16 +26,22 @@ class RGCNProcessor:
     R-GCN（Relational Graph Convolutional Network）を使用した知識グラフ処理
     """
     
-    def __init__(self, device: Optional[str] = None, hidden_dim: int = 64):
+    def __init__(self, device: Optional[str] = None, hidden_dim: int = 64, use_compatibility_mode: bool = False):
         """
         R-GCNプロセッサの初期化
         
         Args:
             device: 使用するデバイス（'cuda', 'mps', 'cpu'）
             hidden_dim: 隠れ層の次元数
+            use_compatibility_mode: 互換モードを使用するかどうか
         """
         self.device = "cpu"
         self.hidden_dim = hidden_dim
+        self.use_compatibility_mode = use_compatibility_mode
+        
+        if use_compatibility_mode:
+            print("R-GCN running in compatibility mode (forced by user)")
+            return
         
         if TORCH_DGL_AVAILABLE:
             if device is None:
