@@ -3,5 +3,10 @@
     "fact": "Plannerが設定されていないとタスクを実行できない",
     "confidence": 0.8,
     "last_updated": 1743745284.95355
+  },
+  "財務省のデモ受け": {
+    "fact": "Plannerが設定されていないとタスクを実行できない",
+    "confidence": 0.8,
+    "last_updated": 1743777044.061823
   }
 }

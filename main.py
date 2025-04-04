@@ -12,7 +12,7 @@ from core.tools.docker_execute import DockerExecuteTool
 from core.tools.system_tool import SystemTool
 from core.auto_plan_agent import AutoPlanAgent
 from core.planning_flow import PlanningFlow
-from core.persistent_thinking_ai import PersistentThinkingAI
+from core.enhanced_persistent_thinking_ai import EnhancedPersistentThinkingAI
 
 def main():
     parser = argparse.ArgumentParser(description='Run the AI Agent system')
@@ -41,13 +41,15 @@ def main():
     
     persistent_thinking_dir = os.path.join(args.workspace, 'persistent_thinking')
     os.makedirs(persistent_thinking_dir, exist_ok=True)
-    persistent_thinking = PersistentThinkingAI(
+    persistent_thinking = EnhancedPersistentThinkingAI(
         model_name=config.get('local_model_name', 'microsoft/phi-2'),
         workspace_dir=persistent_thinking_dir,
         knowledge_db_path=os.path.join(persistent_thinking_dir, 'knowledge_db.json'),
         log_path=os.path.join(persistent_thinking_dir, 'thinking_log.jsonl'),
         device=config.get('device', 'cpu'),
-        use_compatibility_mode=True  # 互換モードを有効化
+        use_compatibility_mode=True,  # 互換モードを有効化
+        tavily_api_key=config.get('tavily_api_key'),
+        firecrawl_api_key=config.get('firecrawl_api_key')
     )
     
     # デバッグモードが有効な場合のログ設定
