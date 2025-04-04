@@ -398,6 +398,27 @@ class EnhancedPersistentThinkingAI:
         if self.thinking_thread is not None:
             self.thinking_thread.join(timeout=2.0)
             print("継続的思考を停止しました。")
+            
+    def continuous_thinking(self, duration_seconds: int = 60):
+        """
+        指定された期間、継続的に思考を行う
+        
+        Args:
+            duration_seconds: 思考を継続する秒数
+        """
+        start_time = time.time()
+        
+        print(f"{duration_seconds}秒間の継続思考を開始します...")
+        
+        while time.time() - start_time < duration_seconds:
+            if self.thinking_state["current_task"]:
+                self._think_about_current_task()
+            else:
+                self._think_about_knowledge()
+                
+            time.sleep(1)
+            
+        print("継続思考を終了します。")
     
     def _continuous_thinking_loop(self, initial_task=None):
         """継続的思考のメインループ"""
