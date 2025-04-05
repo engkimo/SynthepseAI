@@ -347,12 +347,14 @@ class MultiAgentSystem:
             
         start_time = time.time()
         iterations = 0
+        last_status_change_time = start_time
         
         print(f"タスク '{task_id}' の完了を待機中... (タイムアウト: {timeout}秒, 最大反復: {max_iterations})")
         
         if task_id not in self.coordinator.active_tasks:
             print(f"警告: タスク '{task_id}' が調整エージェントのアクティブタスクリストに存在しません")
             print(f"アクティブタスク: {list(self.coordinator.active_tasks.keys())}")
+            return {"error": f"タスク '{task_id}' が見つかりません", "task_id": task_id}
         else:
             print(f"タスク '{task_id}' の初期状態: {self.coordinator.active_tasks[task_id]['status']}")
             print(f"ターゲットエージェント: {self.coordinator.active_tasks[task_id]['target_agents']}")
@@ -360,16 +362,30 @@ class MultiAgentSystem:
             if self.coordinator.active_tasks[task_id]['status'] == 'created':
                 print(f"タスク '{task_id}' の状態を 'created' から 'processing' に強制更新します")
                 self.coordinator.update_task_status(task_id, 'processing')
+                last_status_change_time = time.time()
         
-        if task_id in self.coordinator.active_tasks:
-            task_info = self.coordinator.active_tasks[task_id]
-            
-            for agent_id in task_info['target_agents']:
-                if agent_id in self.agents:
-                    print(f"タスクメッセージを '{agent_id}' に直接送信します")
-                    self.send_message(
+        task_info = self.coordinator.active_tasks[task_id]
+        for agent_id in task_info['target_agents']:
+            agent = self._get_agent_by_id(agent_id)
+            if agent:
+                print(f"タスクメッセージを '{agent_id}' に直接送信します")
+                self.send_message(
+                    sender_id="system",
+                    receiver_id=agent_id,
+                    content=task_info['content'],
+                    message_type="task",
+                    metadata={
+                        "task_id": task_id,
+                        "task_type": task_info['type']
+                    }
+                )
+            else:
+                print(f"警告: エージェント '{agent_id}' が見つかりません")
+                if agent_id == "coordinator" and self.coordinator:
+                    print(f"コーディネーターエージェントにタスクを直接割り当てます")
+                    message = AgentMessage(
                         sender_id="system",
-                        receiver_id=agent_id,
+                        receiver_id="coordinator",
                         content=task_info['content'],
                         message_type="task",
                         metadata={
@@ -377,6 +393,7 @@ class MultiAgentSystem:
                             "task_type": task_info['type']
                         }
                     )
+                    self.coordinator.receive_message(message)
         
         while iterations < max_iterations and time.time() - start_time < timeout:
             processed_results = self.process_messages()
@@ -386,53 +403,77 @@ class MultiAgentSystem:
                 for agent_id, messages in processed_results.items():
                     print(f"  エージェント '{agent_id}': {len(messages)}件のメッセージを処理")
             
-            task_status = self.coordinator.active_tasks.get(task_id, {}).get("status")
+            if task_id not in self.coordinator.active_tasks:
+                print(f"警告: タスク '{task_id}' がアクティブタスクリストから削除されました")
+                break
+                
+            task_status = self.coordinator.active_tasks[task_id]['status']
             
-            if task_status == "processing" and iterations > 50 and iterations % 50 == 0:
-                print(f"タスク '{task_id}' は処理中のままです。結果を確認します...")
+            current_time = time.time()
+            status_wait_time = current_time - last_status_change_time
+            
+            if task_status == "processing" and (iterations > 30 and iterations % 30 == 0 or status_wait_time > 10):
+                print(f"タスク '{task_id}' は処理中のままです（{status_wait_time:.1f}秒経過）。結果を確認します...")
                 results = self.coordinator.get_task_results(task_id)
                 if results:
                     print(f"タスク '{task_id}' に結果がありますが、完了マークがされていません。強制的に完了にします。")
                     self.coordinator.update_task_status(task_id, "completed")
                     task_status = "completed"
+                    last_status_change_time = current_time
             
-            if iterations % 10 == 0 or task_status != "created":
+            if iterations % 10 == 0 or task_status != self.coordinator.active_tasks[task_id].get('previous_status', ''):
                 elapsed = time.time() - start_time
                 print(f"タスク '{task_id}' の状態: {task_status} ({elapsed:.1f}秒経過, {iterations}回目の確認)")
+                
+                if task_status != self.coordinator.active_tasks[task_id].get('previous_status', ''):
+                    last_status_change_time = current_time
+                    self.coordinator.active_tasks[task_id]['previous_status'] = task_status
             
             if task_status == "completed":
                 print(f"タスク '{task_id}' が完了しました。結果を取得します。")
-                return self.get_task_results(task_id)
+                result = self.get_task_results(task_id)
+                if not result:
+                    print(f"警告: タスク '{task_id}' は完了していますが、結果が見つかりません")
+                    return {"error": "タスクは完了していますが、結果が見つかりません", "task_id": task_id}
+                return result
                 
             iterations += 1
             time.sleep(0.1)  # 短い待機時間
-            
+        
         elapsed = time.time() - start_time
         print(f"タスク '{task_id}' がタイムアウトしました。({elapsed:.1f}秒経過, {iterations}回の確認)")
         
-        if self.coordinator and hasattr(self.coordinator, 'active_tasks'):
-            task_info = self.coordinator.active_tasks.get(task_id, {})
-            if task_info:
-                print(f"タスク情報:")
-                print(f"  タイプ: {task_info.get('type')}")
-                print(f"  ステータス: {task_info.get('status')}")
-                print(f"  作成時刻: {task_info.get('created_at')}")
-                print(f"  更新時刻: {task_info.get('updated_at')}")
-                print(f"  ターゲットエージェント: {task_info.get('target_agents')}")
-                print(f"  結果数: {len(task_info.get('results', {}))}")
-                
-                target_agents = task_info.get("target_agents", [])
-                for agent_id in target_agents:
-                    print(f"エージェント '{agent_id}' の状態を確認中...")
-                    agent = next((a for a in self.agents if a.agent_id == agent_id), None)
-                    if agent:
-                        print(f"  エージェント '{agent_id}' が見つかりました")
-                    else:
-                        print(f"  エージェント '{agent_id}' が見つかりません")
-            else:
-                print(f"タスク '{task_id}' の情報が見つかりません")
+        if task_id in self.coordinator.active_tasks:
+            task_info = self.coordinator.active_tasks[task_id]
+            print(f"タスク情報:")
+            print(f"  タイプ: {task_info.get('type')}")
+            print(f"  ステータス: {task_info.get('status')}")
+            print(f"  作成時刻: {task_info.get('created_at')}")
+            print(f"  更新時刻: {task_info.get('updated_at')}")
+            print(f"  ターゲットエージェント: {task_info.get('target_agents')}")
+            print(f"  結果数: {len(task_info.get('results', {}))}")
+            
+            target_agents = task_info.get("target_agents", [])
+            for agent_id in target_agents:
+                print(f"エージェント '{agent_id}' の状態を確認中...")
+                agent = self._get_agent_by_id(agent_id)
+                if agent:
+                    print(f"  エージェント '{agent_id}' が見つかりました")
+                    if hasattr(agent, 'message_queue'):
+                        print(f"  メッセージキュー長: {len(agent.message_queue)}")
+                else:
+                    print(f"  エージェント '{agent_id}' が見つかりません")
+        else:
+            print(f"タスク '{task_id}' の情報が見つかりません")
         
         return {"error": "タスクが完了しませんでした", "task_id": task_id}
+        
+    def _get_agent_by_id(self, agent_id: str):
+        """IDからエージェントを取得"""
+        if agent_id == "coordinator" and self.coordinator:
+            return self.coordinator
+            
+        return next((a for a in self.agents if a.agent_id == agent_id), None)
         
     def wait_for_task_result(self, task_id: str, timeout: float = 30.0) -> Dict[str, Any]:
         """
