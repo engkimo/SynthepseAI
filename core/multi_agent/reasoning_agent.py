@@ -42,6 +42,9 @@ class ReasoningAgent(MultiAgentBase):
         
         self.config = config or {}
         self.mock_mode = self.config.get("mock_mode", False)
+        self.task_processing_errors = {}  # タスク処理エラーを追跡
+        self.reasoning_history = []  # 推論履歴
+        self.active_tasks = {}  # 処理中のタスクを追跡
         
         if self.mock_mode:
             print(f"推論エージェント '{agent_id}' はモックモードで動作中です")
@@ -219,10 +222,35 @@ class ReasoningAgent(MultiAgentBase):
             
             print(f"推論エージェント: タスク '{task_id}' (タイプ: {task_type}) の処理を開始します")
             
+            self.active_tasks[task_id] = {
+                "type": task_type,
+                "content": message.content,
+                "start_time": time.time(),
+                "sender_id": message.sender_id,
+                "status": "processing"
+            }
+            
             try:
                 if self.mock_mode:
                     print(f"推論エージェント: モックモードでタスク '{task_id}' を処理します")
+                    
+                    processing_time = 0.5  # 0.5秒の処理時間
+                    print(f"推論エージェント: モック処理時間 {processing_time}秒をシミュレート")
+                    time.sleep(processing_time)
+                    
                     mock_result = self._generate_mock_result(task_type, message.content)
+                    
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = mock_result
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": mock_result,
+                        "is_mock": True
+                    })
                     
                     response = self.send_message(
                         receiver_id=message.sender_id,
@@ -248,6 +276,17 @@ class ReasoningAgent(MultiAgentBase):
                         max_steps=max_steps
                     )
                     
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = result
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": result
+                    })
+                    
                     response = self.send_message(
                         receiver_id=message.sender_id,
                         content=result,
@@ -269,12 +308,25 @@ class ReasoningAgent(MultiAgentBase):
                         error_message=error_message
                     )
                     
+                    result = {
+                        "fixed_code": fixed_code,
+                        "reasoning_chain": coat_chain
+                    }
+                    
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = result
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": result
+                    })
+                    
                     response = self.send_message(
                         receiver_id=message.sender_id,
-                        content={
-                            "fixed_code": fixed_code,
-                            "reasoning_chain": coat_chain
-                        },
+                        content=result,
                         message_type="task_result",
                         metadata={"task_id": task_id}
                     )
@@ -288,6 +340,17 @@ class ReasoningAgent(MultiAgentBase):
                     print(f"推論エージェント: 問題分析を行います: '{problem_description[:50]}...'")
                     
                     analysis = self.analyze_problem(problem_description)
+                    
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = analysis
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": analysis
+                    })
                     
                     response = self.send_message(
                         receiver_id=message.sender_id,
@@ -347,6 +410,17 @@ class ReasoningAgent(MultiAgentBase):
                             analysis_result["task_type"] = "analysis"
                             analysis_result["required_tools"] = ["python_execute"]
                     
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = analysis_result
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": analysis_result
+                    })
+                    
                     response = self.send_message(
                         receiver_id=message.sender_id,
                         content=analysis_result,
@@ -365,6 +439,17 @@ class ReasoningAgent(MultiAgentBase):
                     
                     plan = self.generate_plan(goal, context)
                     
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = plan
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": plan
+                    })
+                    
                     response = self.send_message(
                         receiver_id=message.sender_id,
                         content=plan,
@@ -381,6 +466,17 @@ class ReasoningAgent(MultiAgentBase):
                         "error": f"未知のタスクタイプ: {task_type}",
                         "message": "このタスクタイプは推論エージェントでは処理できません。"
                     }
+                    
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = default_response
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": default_response
+                    })
                     
                     response = self.send_message(
                         receiver_id=message.sender_id,
@@ -408,6 +504,22 @@ class ReasoningAgent(MultiAgentBase):
                     "error": error_message,
                     "message": "タスク処理中にエラーが発生しました。"
                 }
+                
+                self.active_tasks[task_id]["status"] = "error"
+                self.active_tasks[task_id]["end_time"] = time.time()
+                self.active_tasks[task_id]["result"] = error_response
+                self.active_tasks[task_id]["error"] = {
+                    "message": error_message,
+                    "stack_trace": stack_trace
+                }
+                
+                self.reasoning_history.append({
+                    "task_id": task_id,
+                    "task_type": task_type,
+                    "timestamp": time.time(),
+                    "result": error_response,
+                    "error": error_message
+                })
                 
                 response = self.send_message(
                     receiver_id=message.sender_id,
