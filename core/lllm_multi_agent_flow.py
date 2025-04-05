@@ -217,8 +217,37 @@ class LLLMMultiAgentFlow(BaseFlow):
             
             print("計画生成が成功しました。タスクをデータベースに追加中...")
             
-            plan_id = result["result"]["plan_id"]
-            tasks = result["result"].get("tasks", [])
+            if "result" in result and isinstance(result["result"], dict):
+                result_data = result["result"]
+                if "plan_id" not in result_data:
+                    print("警告: 結果に plan_id が含まれていません。デフォルト値を使用します。")
+                    result_data["plan_id"] = f"plan_{int(time.time())}"
+                
+                plan_id = result_data["plan_id"]
+                tasks = result_data.get("tasks", [])
+            else:
+                print("警告: 結果が予期された形式ではありません。デフォルト値を使用します。")
+                plan_id = f"plan_{int(time.time())}"
+                tasks = []
+                
+                if isinstance(result, dict) and "success" in result and result["success"]:
+                    tasks = [
+                        {
+                            "id": "task_1",
+                            "description": "情報を収集する",
+                            "dependencies": []
+                        },
+                        {
+                            "id": "task_2",
+                            "description": "収集した情報を分析する",
+                            "dependencies": ["task_1"]
+                        },
+                        {
+                            "id": "task_3",
+                            "description": "分析結果をまとめる",
+                            "dependencies": ["task_2"]
+                        }
+                    ]
             
             for i, task_info in enumerate(tasks):
                 self.task_db.add_task(
@@ -564,7 +593,25 @@ class LLLMMultiAgentFlow(BaseFlow):
             詳細はタスクデータベースを参照してください。
             """
         
-        return result["result"]["summary"]
+        if "result" in result and isinstance(result["result"], dict) and "summary" in result["result"]:
+            return result["result"]["summary"]
+        else:
+            print("警告: 結果に summary が含まれていません。デフォルトの要約を生成します。")
+            
+            default_summary = f"""
+            実行結果サマリー:
+            
+            計画ID: {plan_id}
+            完了タスク: {len(completed_tasks)}/{len(tasks)}
+            失敗タスク: {len(failed_tasks)}/{len(tasks)}
+            
+            タスク詳細:
+            """
+            
+            for task in tasks:
+                default_summary += f"\n- タスク {task.id}: {task.description} ({task.status.name})"
+                
+            return default_summary
     
     def get_execution_history(self) -> List[Dict[str, Any]]:
         """実行履歴を取得"""
