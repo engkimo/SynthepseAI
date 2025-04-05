@@ -260,6 +260,61 @@ class ReasoningAgent(MultiAgentBase):
                 )
                 responses.append(response)
                 
+            elif task_type == "analyze_task":
+                content = message.content
+                description = content.get("description", "")
+                
+                analysis_result = {}
+                
+                if self.llm:
+                    prompt = f"""
+                    以下のタスクを分析し、必要なツールと複雑さを評価してください：
+                    
+                    タスク: {description}
+                    
+                    以下の形式で回答してください：
+                    
+                    タスクタイプ: [web_search/code_generation/analysis/general]
+                    複雑さ: [low/medium/high]
+                    必要なツール: [ツールのリスト（例: web_crawler, python_execute）]
+                    """
+                    
+                    analysis_text = self.llm.generate_text(prompt)
+                    
+                    for line in analysis_text.split('\n'):
+                        line = line.strip()
+                        if line.startswith("タスクタイプ:"):
+                            analysis_result["task_type"] = line[len("タスクタイプ:"):].strip()
+                        elif line.startswith("複雑さ:"):
+                            analysis_result["complexity"] = line[len("複雑さ:"):].strip()
+                        elif line.startswith("必要なツール:"):
+                            tools_str = line[len("必要なツール:"):].strip()
+                            analysis_result["required_tools"] = [t.strip() for t in tools_str.split(',')]
+                else:
+                    analysis_result = {
+                        "task_type": "general",
+                        "complexity": "medium",
+                        "required_tools": ["python_execute"]
+                    }
+                    
+                    if "検索" in description or "情報収集" in description or "調査" in description:
+                        analysis_result["task_type"] = "web_search"
+                        analysis_result["required_tools"] = ["web_crawler"]
+                    elif "コード" in description or "プログラム" in description or "実装" in description:
+                        analysis_result["task_type"] = "code_generation"
+                        analysis_result["required_tools"] = ["python_execute"]
+                    elif "分析" in description or "評価" in description or "検証" in description:
+                        analysis_result["task_type"] = "analysis"
+                        analysis_result["required_tools"] = ["python_execute"]
+                
+                response = self.send_message(
+                    receiver_id=message.sender_id,
+                    content=analysis_result,
+                    message_type="task_result",
+                    metadata={"task_id": task_id}
+                )
+                responses.append(response)
+                
             elif task_type == "generate_plan":
                 content = message.content
                 goal = content.get("goal", "")
