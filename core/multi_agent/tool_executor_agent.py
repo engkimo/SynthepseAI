@@ -42,10 +42,15 @@ class ToolExecutorAgent(MultiAgentBase):
         self.tools = {}
         self.config = config or {}
         
+        mock_mode = self.config.get("mock_mode", False)
+        if mock_mode:
+            print(f"ツール実行エージェント '{agent_id}' はモックモードで動作中です")
+        
         web_crawler_config = {}
         if self.config.get("use_web_tools", False):
             web_crawler_config = {
-                "use_environment_keys": True  # 環境変数からAPIキーを取得するフラグ
+                "use_environment_keys": True,  # 環境変数からAPIキーを取得するフラグ
+                "mock_mode": mock_mode  # モックモードの設定を渡す
             }
             
         self.web_crawler = WebCrawlingTool(**web_crawler_config)
@@ -100,6 +105,30 @@ class ToolExecutorAgent(MultiAgentBase):
             return {"success": False, "error": f"ツール '{tool_name}' が見つかりません"}
             
         tool = self.tools[tool_name]
+        
+        mock_mode = self.config.get("mock_mode", False)
+        if mock_mode and tool_name == "web_crawler":
+            print(f"モックモード: ツール '{tool_name}' の実行をシミュレート: {kwargs}")
+            
+            mock_result = self._generate_mock_result(tool_name, **kwargs)
+            
+            execution_record = {
+                "tool": tool_name,
+                "params": kwargs,
+                "success": True,
+                "result": mock_result,
+                "error": None,
+                "timestamp": time.time(),
+                "mock": True
+            }
+            
+            self.execution_history.append(execution_record)
+            
+            return {
+                "success": True,
+                "result": mock_result,
+                "mock": True
+            }
         
         try:
             result = tool.execute(**kwargs)
@@ -248,3 +277,47 @@ class ToolExecutorAgent(MultiAgentBase):
             }
             
         return tools_info
+        
+    def _generate_mock_result(self, tool_name: str, **kwargs) -> Any:
+        """
+        モックモード用の結果を生成
+        
+        Args:
+            tool_name: ツール名
+            **kwargs: ツールパラメータ
+            
+        Returns:
+            モック結果
+        """
+        if tool_name == "web_crawler":
+            if "query" in kwargs:
+                query = kwargs["query"]
+                return {
+                    "results": [
+                        {
+                            "title": f"モック検索結果 1: {query}",
+                            "url": "https://example.com/mock-result-1",
+                            "content": f"これはモックモードでの検索結果です。クエリ: {query}。この結果はAPIコールなしで生成されています。"
+                        },
+                        {
+                            "title": f"モック検索結果 2: {query}",
+                            "url": "https://example.com/mock-result-2",
+                            "content": f"これは2つ目のモック検索結果です。クエリ: {query}。実際のAPIコールは行われていません。"
+                        }
+                    ],
+                    "query": query,
+                    "mock": True
+                }
+            elif "url" in kwargs:
+                url = kwargs["url"]
+                return {
+                    "url": url,
+                    "title": f"モックページ: {url}",
+                    "content": f"これはモックモードでのURL取得結果です。URL: {url}。この結果はAPIコールなしで生成されています。",
+                    "mock": True
+                }
+        
+        return {
+            "message": "これはモックモードでの応答です。実際のAPIコールは行われていません。",
+            "mock": True
+        }
