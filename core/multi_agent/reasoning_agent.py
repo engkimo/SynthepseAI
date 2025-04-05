@@ -34,7 +34,7 @@ class ReasoningAgent(MultiAgentBase):
         """
         super().__init__(
             agent_id=agent_id,
-            role=AgentRole.REASONING,
+            role=AgentRole.MAIN_REASONING,
             name=name,
             description=description,
             llm=llm
