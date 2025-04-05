@@ -186,29 +186,52 @@ class MultiAgentSystem:
         Returns:
             送信が成功したかどうか
         """
-        if sender_id not in self.agents:
+        if sender_id not in self.agents and sender_id != "system":
+            print(f"警告: 送信者 '{sender_id}' が見つかりません")
+            print(f"利用可能なエージェント: {list(self.agents.keys())}")
             return False
             
         if receiver_id not in self.agents and receiver_id != "broadcast":
+            print(f"警告: 受信者 '{receiver_id}' が見つかりません")
+            print(f"利用可能なエージェント: {list(self.agents.keys())}")
             return False
             
-        sender = self.agents[sender_id]
-        message = sender.send_message(
-            receiver_id=receiver_id,
-            content=content,
-            message_type=message_type,
-            metadata=metadata
-        )
+        print(f"メッセージを送信: {sender_id} -> {receiver_id}, タイプ={message_type}")
+        
+        if sender_id == "system":
+            from .agent_base import AgentMessage
+            message = AgentMessage(
+                sender_id=sender_id,
+                receiver_id=receiver_id,
+                content=content,
+                message_type=message_type,
+                metadata=metadata
+            )
+        else:
+            sender = self.agents[sender_id]
+            message = sender.send_message(
+                receiver_id=receiver_id,
+                content=content,
+                message_type=message_type,
+                metadata=metadata
+            )
         
         if receiver_id == "broadcast":
+            success_count = 0
             for agent_id, agent in self.agents.items():
-                if agent_id != sender_id:
-                    agent.receive_message(message)
+                if agent_id != sender_id or sender_id == "system":
+                    if agent.receive_message(message):
+                        success_count += 1
+            print(f"ブロードキャストメッセージが {success_count} 件のエージェントに送信されました")
+            return success_count > 0
         else:
             receiver = self.agents[receiver_id]
-            receiver.receive_message(message)
-            
-        return True
+            result = receiver.receive_message(message)
+            if result:
+                print(f"メッセージが '{receiver_id}' に正常に送信されました")
+            else:
+                print(f"メッセージの '{receiver_id}' への送信に失敗しました")
+            return result
     
     def process_messages(self) -> Dict[str, List[AgentMessage]]:
         """
@@ -218,22 +241,35 @@ class MultiAgentSystem:
             エージェントIDから処理結果のメッセージリストへのマッピング
         """
         results = {}
+        total_processed = 0
+        
+        for agent_id, agent in self.agents.items():
+            queue_size = len(agent.message_queue)
+            if queue_size > 0:
+                print(f"エージェント '{agent_id}' のメッセージキュー: {queue_size}件")
         
         for agent_id, agent in self.agents.items():
             responses = agent.process_messages()
+            total_processed += len(responses)
             
             if responses:
+                print(f"エージェント '{agent_id}' が {len(responses)} 件のメッセージを処理しました")
                 results[agent_id] = responses
                 
                 for response in responses:
                     if response.receiver_id in self.agents:
                         receiver = self.agents[response.receiver_id]
+                        print(f"メッセージを '{response.receiver_id}' に転送: タイプ={response.message_type}")
                         receiver.receive_message(response)
                     elif response.receiver_id == "broadcast":
+                        print(f"ブロードキャストメッセージを送信: タイプ={response.message_type}")
                         for other_id, other_agent in self.agents.items():
                             if other_id != agent_id:
                                 other_agent.receive_message(response)
         
+        if total_processed > 0:
+            print(f"合計 {total_processed} 件のメッセージが処理されました")
+            
         return results
     
     def create_task(self, task_type: str, content: Any, target_agents: Optional[List[str]] = None, requester_id: Optional[str] = None) -> str:
@@ -254,8 +290,28 @@ class MultiAgentSystem:
             
         if requester_id is None:
             requester_id = "system"
+        
+        if target_agents:
+            valid_agents = []
+            for agent_id in target_agents:
+                if agent_id in self.agents:
+                    valid_agents.append(agent_id)
+                else:
+                    print(f"警告: ターゲットエージェント '{agent_id}' が見つかりません")
+                    print(f"利用可能なエージェント: {list(self.agents.keys())}")
+                    if agent_id == "coordinator" and self.coordinator:
+                        print(f"'coordinator' を '{self.coordinator.agent_id}' に置き換えます")
+                        valid_agents.append(self.coordinator.agent_id)
             
-        return self.coordinator.create_task(task_type, content, target_agents, requester_id)
+            if not valid_agents:
+                print(f"エラー: 有効なターゲットエージェントがありません")
+                valid_agents = [self.coordinator.agent_id]
+                
+            target_agents = valid_agents
+            
+        task_id = self.coordinator.create_task(task_type, content, target_agents, requester_id)
+        print(f"タスク '{task_id}' が作成されました: タイプ={task_type}, ターゲット={target_agents}")
+        return task_id
     
     def get_task_results(self, task_id: str) -> Dict[str, Any]:
         """
@@ -284,6 +340,8 @@ class MultiAgentSystem:
         Returns:
             タスク結果
         """
+        from .agent_base import AgentMessage
+        
         if self.coordinator is None:
             raise ValueError("調整エージェントが初期化されていません")
             
@@ -292,10 +350,51 @@ class MultiAgentSystem:
         
         print(f"タスク '{task_id}' の完了を待機中... (タイムアウト: {timeout}秒, 最大反復: {max_iterations})")
         
+        if task_id not in self.coordinator.active_tasks:
+            print(f"警告: タスク '{task_id}' が調整エージェントのアクティブタスクリストに存在しません")
+            print(f"アクティブタスク: {list(self.coordinator.active_tasks.keys())}")
+        else:
+            print(f"タスク '{task_id}' の初期状態: {self.coordinator.active_tasks[task_id]['status']}")
+            print(f"ターゲットエージェント: {self.coordinator.active_tasks[task_id]['target_agents']}")
+            
+            if self.coordinator.active_tasks[task_id]['status'] == 'created':
+                print(f"タスク '{task_id}' の状態を 'created' から 'processing' に強制更新します")
+                self.coordinator.update_task_status(task_id, 'processing')
+        
+        if task_id in self.coordinator.active_tasks:
+            task_info = self.coordinator.active_tasks[task_id]
+            
+            for agent_id in task_info['target_agents']:
+                if agent_id in self.agents:
+                    print(f"タスクメッセージを '{agent_id}' に直接送信します")
+                    self.send_message(
+                        sender_id="system",
+                        receiver_id=agent_id,
+                        content=task_info['content'],
+                        message_type="task",
+                        metadata={
+                            "task_id": task_id,
+                            "task_type": task_info['type']
+                        }
+                    )
+        
         while iterations < max_iterations and time.time() - start_time < timeout:
-            self.process_messages()
+            processed_results = self.process_messages()
+            
+            if processed_results:
+                print(f"イテレーション {iterations}: メッセージが処理されました")
+                for agent_id, messages in processed_results.items():
+                    print(f"  エージェント '{agent_id}': {len(messages)}件のメッセージを処理")
             
             task_status = self.coordinator.active_tasks.get(task_id, {}).get("status")
+            
+            if task_status == "processing" and iterations > 50 and iterations % 50 == 0:
+                print(f"タスク '{task_id}' は処理中のままです。結果を確認します...")
+                results = self.coordinator.get_task_results(task_id)
+                if results:
+                    print(f"タスク '{task_id}' に結果がありますが、完了マークがされていません。強制的に完了にします。")
+                    self.coordinator.update_task_status(task_id, "completed")
+                    task_status = "completed"
             
             if iterations % 10 == 0 or task_status != "created":
                 elapsed = time.time() - start_time

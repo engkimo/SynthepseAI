@@ -111,6 +111,8 @@ class CoordinatorAgent(MultiAgentBase):
         """
         task_id = str(uuid.uuid4())
         
+        print(f"新しいタスクを作成: タイプ={task_type}, 要求者={requester_id}")
+        
         if target_agents is None:
             if task_type == "reasoning":
                 target_role = AgentRole.MAIN_REASONING
@@ -128,28 +130,57 @@ class CoordinatorAgent(MultiAgentBase):
                 target_role = AgentRole.MAIN_REASONING
                 
             target_agents = self.get_agents_by_role(target_role)
+            print(f"役割 {target_role} に基づいてターゲットエージェントを選択: {target_agents}")
             
-        self.active_tasks[task_id] = {
-            "type": task_type,
-            "content": content,
-            "target_agents": target_agents,
-            "status": "created",
-            "created_at": time.time(),
-            "updated_at": time.time(),
-            "results": {},
-            "requester_id": requester_id
-        }
-        
-        for agent_id in target_agents:
-            self.send_message(
-                receiver_id=agent_id,
+        if len(target_agents) == 1 and target_agents[0] == self.agent_id:
+            print(f"コーディネーター自身がターゲットです。タスク '{task_id}' を直接処理します。")
+            
+            self.active_tasks[task_id] = {
+                "type": task_type,
+                "content": content,
+                "target_agents": target_agents,
+                "status": "processing",  # 直接「処理中」に設定
+                "created_at": time.time(),
+                "updated_at": time.time(),
+                "results": {},
+                "requester_id": requester_id
+            }
+            
+            self.receive_message(AgentMessage(
+                sender_id=self.agent_id,
+                receiver_id=self.agent_id,
                 content=content,
                 message_type="task",
                 metadata={
                     "task_id": task_id,
                     "task_type": task_type
                 }
-            )
+            ))
+        else:
+            self.active_tasks[task_id] = {
+                "type": task_type,
+                "content": content,
+                "target_agents": target_agents,
+                "status": "created",
+                "created_at": time.time(),
+                "updated_at": time.time(),
+                "results": {},
+                "requester_id": requester_id
+            }
+            
+            print(f"タスク '{task_id}' を作成しました。ターゲットエージェント: {target_agents}")
+            
+            for agent_id in target_agents:
+                print(f"タスクメッセージを '{agent_id}' に送信します")
+                self.send_message(
+                    receiver_id=agent_id,
+                    content=content,
+                    message_type="task",
+                    metadata={
+                        "task_id": task_id,
+                        "task_type": task_type
+                    }
+                )
         
         return task_id
     
@@ -185,8 +216,10 @@ class CoordinatorAgent(MultiAgentBase):
             追加が成功したかどうか
         """
         if task_id not in self.active_tasks:
+            print(f"警告: タスク '{task_id}' が見つかりません。結果を追加できません。")
             return False
             
+        print(f"タスク '{task_id}' に結果を追加: エージェント={agent_id}")
         self.active_tasks[task_id]["results"][agent_id] = {
             "result": result,
             "timestamp": time.time()
@@ -195,7 +228,11 @@ class CoordinatorAgent(MultiAgentBase):
         target_agents = set(self.active_tasks[task_id]["target_agents"])
         result_agents = set(self.active_tasks[task_id]["results"].keys())
         
+        print(f"タスク '{task_id}' - ターゲットエージェント: {target_agents}")
+        print(f"タスク '{task_id}' - 結果を提供したエージェント: {result_agents}")
+        
         if target_agents.issubset(result_agents):
+            print(f"すべてのターゲットエージェントから結果を受け取りました。タスク '{task_id}' を完了としてマークします。")
             self.update_task_status(task_id, "completed")
             
         return True
@@ -227,6 +264,8 @@ class CoordinatorAgent(MultiAgentBase):
         """
         responses = []
         
+        print(f"コーディネーターがメッセージを処理: タイプ={message.message_type}, 送信者={message.sender_id}")
+        
         if message.message_type == "register":
             content = message.content
             success = self.register_agent(
@@ -248,15 +287,34 @@ class CoordinatorAgent(MultiAgentBase):
             task_id = metadata.get("task_id")
             
             if task_id:
+                print(f"タスク結果を受信: タスクID={task_id}, 送信者={message.sender_id}")
                 success = self.add_task_result(
                     task_id=task_id,
                     agent_id=message.sender_id,
                     result=message.content
                 )
                 
-                if success and self.active_tasks[task_id]["status"] == "completed":
+                if success:
+                    print(f"タスク '{task_id}' の結果が正常に追加されました")
+                    
+                    if task_id in self.active_tasks:
+                        task_status = self.active_tasks[task_id]["status"]
+                        print(f"タスク '{task_id}' の現在の状態: {task_status}")
+                        
+                        target_agents = set(self.active_tasks[task_id]["target_agents"])
+                        result_agents = set(self.active_tasks[task_id]["results"].keys())
+                        
+                        print(f"ターゲットエージェント: {target_agents}")
+                        print(f"結果を提供したエージェント: {result_agents}")
+                        
+                        if target_agents.issubset(result_agents) and task_status != "completed":
+                            print(f"すべてのエージェントから結果を受け取りました。タスク '{task_id}' を完了としてマークします。")
+                            self.update_task_status(task_id, "completed")
+                
+                if task_id in self.active_tasks and self.active_tasks[task_id]["status"] == "completed":
                     requester_id = self.active_tasks[task_id].get("requester_id")
                     if requester_id:
+                        print(f"タスク '{task_id}' の完了を通知: 要求者={requester_id}")
                         notification = self.send_message(
                             receiver_id=requester_id,
                             content=self.get_task_results(task_id),
@@ -269,6 +327,8 @@ class CoordinatorAgent(MultiAgentBase):
             metadata = message.metadata or {}
             task_id = metadata.get("task_id")
             task_type = metadata.get("task_type")
+            
+            print(f"タスクメッセージを受信: タスクID={task_id}, タイプ={task_type}")
             
             if task_id and task_id in self.active_tasks:
                 print(f"コーディネーターがタスク '{task_id}' を処理中... タイプ: {task_type}")
@@ -286,6 +346,9 @@ class CoordinatorAgent(MultiAgentBase):
                 )
                 
                 if task_id in self.active_tasks:
+                    print(f"計画生成タスク '{task_id}' を完了としてマークします")
+                    self.update_task_status(task_id, "completed")
+                    
                     requester_id = self.active_tasks[task_id].get("requester_id")
                     if requester_id:
                         print(f"計画生成タスク '{task_id}' の完了を通知: {requester_id}")
