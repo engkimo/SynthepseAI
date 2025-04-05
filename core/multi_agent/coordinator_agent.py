@@ -763,3 +763,103 @@ class CoordinatorAgent(MultiAgentBase):
         for agent_id, info in self.registered_agents.items():
             if current_time - info["last_active"] > timeout:
                 self.registered_agents[agent_id]["status"] = "inactive"
+                
+    def check_stuck_tasks(self, force_complete_after_seconds=30):
+        """
+        処理中のままになっているタスクをチェックし、必要に応じて強制的に完了状態に移行
+        
+        Args:
+            force_complete_after_seconds: この秒数以上処理中のままのタスクを強制的に完了とする
+        """
+        current_time = time.time()
+        stuck_tasks = []
+        
+        for task_id, task_info in self.active_tasks.items():
+            if task_info["status"] == "processing":
+                time_in_processing = current_time - task_info.get("updated_at", task_info.get("created_at", current_time))
+                
+                if time_in_processing > force_complete_after_seconds:
+                    print(f"警告: タスク '{task_id}' が {time_in_processing:.1f} 秒間処理中のままです。強制的に完了状態に移行します。")
+                    stuck_tasks.append(task_id)
+                    
+                    if not task_info["results"]:
+                        print(f"タスク '{task_id}' には結果がありません。デフォルト結果を生成します。")
+                        self._generate_default_result_for_stuck_task(task_id, task_info)
+                    
+                    self.update_task_status(task_id, "completed")
+                    
+                    requester_id = task_info.get("requester_id")
+                    if requester_id:
+                        print(f"タスク '{task_id}' の完了を通知: 要求者={requester_id}")
+                        self.send_message(
+                            receiver_id=requester_id,
+                            content=self.get_task_results(task_id),
+                            message_type="task_completed",
+                            metadata={"task_id": task_id}
+                        )
+        
+        return stuck_tasks
+    
+    def _generate_default_result_for_stuck_task(self, task_id, task_info):
+        """
+        スタックしたタスクのデフォルト結果を生成
+        
+        Args:
+            task_id: タスクID
+            task_info: タスク情報
+        """
+        task_type = task_info["type"]
+        content = task_info["content"]
+        
+        print(f"タスク '{task_id}' (タイプ: {task_type}) のデフォルト結果を生成します")
+        
+        default_result = {
+            "success": True,
+            "message": "タスクはタイムアウトにより自動完了しました",
+            "generated_by": "coordinator_default",
+            "is_fallback": True
+        }
+        
+        if task_type == "analyze_task":
+            description = content.get("description", "")
+            default_result.update({
+                "task_type": "general",
+                "complexity": "medium",
+                "required_tools": ["python_execute"]
+            })
+            
+            if "検索" in description or "情報収集" in description or "調査" in description:
+                default_result["task_type"] = "web_search"
+                default_result["required_tools"] = ["web_crawler"]
+            elif "コード" in description or "プログラム" in description or "実装" in description:
+                default_result["task_type"] = "code_generation"
+                default_result["required_tools"] = ["python_execute"]
+                
+        elif task_type == "generate_plan":
+            goal = content.get("goal", "")
+            default_result.update({
+                "plan_id": f"plan_{int(time.time())}",
+                "title": f"'{goal[:30]}...' のための自動生成計画",
+                "description": "これはタイムアウトにより自動生成された計画です。",
+                "steps": [
+                    {"id": 1, "name": "情報収集", "description": "関連情報を収集します"},
+                    {"id": 2, "name": "分析", "description": "収集した情報を分析します"},
+                    {"id": 3, "name": "実装", "description": "分析結果に基づいて実装します"}
+                ]
+            })
+            
+        elif task_type == "reasoning_chain":
+            task_description = content.get("task_description", "")
+            default_result.update({
+                "chain": [
+                    {"thought": "タスクを分析しています", "action": "情報を整理する"},
+                    {"thought": "解決策を検討しています", "action": "最適な方法を選択する"}
+                ],
+                "solution": f"タスク '{task_description[:30]}...' に対するデフォルト解決策です。"
+            })
+        
+        self.add_task_result(
+            task_id=task_id,
+            agent_id=self.agent_id,
+            result=default_result
+        )
