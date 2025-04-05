@@ -158,11 +158,57 @@ class LLLMMultiAgentFlow(BaseFlow):
             
             print(f"タスクID '{task_id}' が作成されました。結果を待機中...")
             
+            coordinator = self.multi_agent_system.coordinator
+            if coordinator and task_id in coordinator.active_tasks:
+                initial_status = coordinator.active_tasks[task_id]["status"]
+                print(f"タスク '{task_id}' の初期状態: {initial_status}")
+                
+                if initial_status == "created":
+                    print(f"タスク '{task_id}' の状態を 'created' から 'processing' に更新します")
+                    coordinator.update_task_status(task_id, "processing")
+                    
+                    print(f"タスクメッセージをコーディネーターに直接送信します")
+                    self.multi_agent_system.send_message(
+                        sender_id="system",
+                        receiver_id="coordinator",
+                        content=plan_task,
+                        message_type="task",
+                        metadata={
+                            "task_id": task_id,
+                            "task_type": "generate_plan"
+                        }
+                    )
+            
             result = self.multi_agent_system.wait_for_task_result(task_id, timeout=180)
             
             if not result["success"]:
                 error_msg = result.get("error", "計画生成中にエラーが発生しました")
                 print(f"計画生成エラー: {error_msg}")
+                
+                if "partial" in result and result["partial"] and "result" in result:
+                    print("部分的な結果が利用可能です。これを使用して続行します。")
+                    partial_result = result["result"]
+                    
+                    if isinstance(partial_result, dict) and "plan_id" in partial_result:
+                        plan_id = partial_result["plan_id"]
+                        tasks = partial_result.get("tasks", [])
+                        
+                        if tasks:
+                            print(f"部分的な結果から計画を作成します: {plan_id}")
+                            for i, task_info in enumerate(tasks):
+                                self.task_db.add_task(
+                                    plan_id=plan_id,
+                                    description=task_info["description"],
+                                    dependencies=task_info.get("dependencies", [])
+                                )
+                            
+                            return {
+                                "success": True,
+                                "plan_id": plan_id,
+                                "task_count": len(tasks),
+                                "warning": "タスクは完全には完了しませんでしたが、部分的な結果を使用しています"
+                            }
+                
                 return {
                     "success": False,
                     "error": error_msg
