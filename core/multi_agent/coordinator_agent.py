@@ -310,6 +310,9 @@ class CoordinatorAgent(MultiAgentBase):
                         if target_agents.issubset(result_agents) and task_status != "completed":
                             print(f"すべてのエージェントから結果を受け取りました。タスク '{task_id}' を完了としてマークします。")
                             self.update_task_status(task_id, "completed")
+                        elif len(result_agents) > 0 and task_status == "processing" and time.time() - self.active_tasks[task_id].get("updated_at", 0) > 10:
+                            print(f"タスク '{task_id}' は長時間処理中のままですが、少なくとも1つの結果があります。完了としてマークします。")
+                            self.update_task_status(task_id, "completed")
                 
                 if task_id in self.active_tasks and self.active_tasks[task_id]["status"] == "completed":
                     requester_id = self.active_tasks[task_id].get("requester_id")
@@ -445,39 +448,61 @@ class CoordinatorAgent(MultiAgentBase):
         content = message.content
         description = content.get("description", "")
         
-        analysis_result = {
-            "task_type": "general",
-            "complexity": "medium",
-            "required_tools": ["python_execute"]
-        }
+        reasoning_agents = self.get_agents_by_role(AgentRole.MAIN_REASONING)
         
-        if "検索" in description or "情報収集" in description or "調査" in description:
-            analysis_result["task_type"] = "web_search"
-            analysis_result["required_tools"] = ["web_crawler"]
-        elif "コード" in description or "プログラム" in description or "実装" in description:
-            analysis_result["task_type"] = "code_generation"
-            analysis_result["required_tools"] = ["python_execute"]
-        elif "分析" in description or "評価" in description or "検証" in description:
-            analysis_result["task_type"] = "analysis"
-            analysis_result["required_tools"] = ["python_execute"]
-        
-        self.add_task_result(
-            task_id=task_id,
-            agent_id=self.agent_id,
-            result=analysis_result
-        )
-        
-        self.update_task_status(task_id, "completed")
-        
-        requester_id = self.active_tasks[task_id].get("requester_id")
-        if requester_id:
-            notification = self.send_message(
-                receiver_id=requester_id,
-                content=analysis_result,
-                message_type="task_completed",
-                metadata={"task_id": task_id}
+        if not reasoning_agents:
+            print(f"警告: 推論エージェントが見つかりません。コーディネーターが直接タスクを処理します。")
+            analysis_result = {
+                "task_type": "general",
+                "complexity": "medium",
+                "required_tools": ["python_execute"]
+            }
+            
+            if "検索" in description or "情報収集" in description or "調査" in description:
+                analysis_result["task_type"] = "web_search"
+                analysis_result["required_tools"] = ["web_crawler"]
+            elif "コード" in description or "プログラム" in description or "実装" in description:
+                analysis_result["task_type"] = "code_generation"
+                analysis_result["required_tools"] = ["python_execute"]
+            elif "分析" in description or "評価" in description or "検証" in description:
+                analysis_result["task_type"] = "analysis"
+                analysis_result["required_tools"] = ["python_execute"]
+            
+            self.add_task_result(
+                task_id=task_id,
+                agent_id=self.agent_id,
+                result=analysis_result
             )
-            responses.append(notification)
+            
+            self.update_task_status(task_id, "completed")
+            
+            requester_id = self.active_tasks[task_id].get("requester_id")
+            if requester_id:
+                notification = self.send_message(
+                    receiver_id=requester_id,
+                    content=analysis_result,
+                    message_type="task_completed",
+                    metadata={"task_id": task_id}
+                )
+                responses.append(notification)
+        else:
+            reasoning_agent_id = reasoning_agents[0]
+            print(f"タスク分析を推論エージェント '{reasoning_agent_id}' に委譲します")
+            
+            self.active_tasks[task_id]["target_agents"] = [reasoning_agent_id]
+            
+            task_message = self.send_message(
+                receiver_id=reasoning_agent_id,
+                content={"description": description},
+                message_type="task",
+                metadata={
+                    "task_id": task_id,
+                    "task_type": "analyze_task"
+                }
+            )
+            responses.append(task_message)
+            
+            self.update_task_status(task_id, "processing")
             
     def _process_generate_summary_task(self, task_id: str, message: AgentMessage, responses: List[AgentMessage]):
         """

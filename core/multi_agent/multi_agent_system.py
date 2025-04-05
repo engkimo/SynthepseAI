@@ -484,6 +484,29 @@ class MultiAgentSystem:
                     self.coordinator.update_task_status(task_id, "completed")
                     task_status = "completed"
                     last_status_change_time = current_time
+                elif status_wait_time > 20:  # 20秒以上処理中のままの場合
+                    print(f"タスク '{task_id}' は長時間処理中のままです。タスクの状態を確認します...")
+                    task_info = self.coordinator.active_tasks[task_id]
+                    target_agents = task_info.get("target_agents", [])
+                    
+                    for agent_id in target_agents:
+                        agent = self._get_agent_by_id(agent_id)
+                        if agent:
+                            print(f"エージェント '{agent_id}' のメッセージキュー: {len(agent.message_queue)}件")
+                            
+                            print(f"タスクメッセージを '{agent_id}' に再送信します")
+                            self.send_message(
+                                sender_id="system",
+                                receiver_id=agent_id,
+                                content=task_info['content'],
+                                message_type="task",
+                                metadata={
+                                    "task_id": task_id,
+                                    "task_type": task_info['type']
+                                }
+                            )
+                    
+                    last_status_change_time = current_time
             
             if iterations % 10 == 0 or task_status != self.coordinator.active_tasks[task_id].get('previous_status', ''):
                 elapsed = time.time() - start_time
@@ -581,6 +604,10 @@ class MultiAgentSystem:
                 if task_info:
                     task_status = task_info.get("status", "不明")
                     print(f"タスクステータス: {task_status}")
+                    
+                    if task_status == "processing" and time.time() - task_info.get("updated_at", 0) > 15:
+                        print(f"タスク '{task_id}' は長時間処理中のままです。強制的に完了にします。")
+                        self.coordinator.update_task_status(task_id, "completed")
                     
                     results = task_info.get("results", {})
                     if results:
