@@ -386,6 +386,16 @@ class TaskDatabase:
 
         return runnable
         
+    def get_task_dependencies(self, task_id: str) -> List[str]:
+        """タスクの依存関係を取得"""
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "SELECT dependency_id FROM task_dependencies WHERE task_id = ?",
+            (task_id,),
+        )
+        dependencies = [dep[0] for dep in cursor.fetchall()]
+        return dependencies
+        
     def add_error_history(self, task_id: str, error_message: str, attempted_fix: str = None, success: bool = False) -> int:
         """エラー履歴を追加する"""
         cursor = self.connection.cursor()

@@ -13,6 +13,11 @@ from core.tools.system_tool import SystemTool
 from core.auto_plan_agent import AutoPlanAgent
 from core.planning_flow import PlanningFlow
 from core.enhanced_persistent_thinking_ai import EnhancedPersistentThinkingAI
+from core.lllm_multi_agent_flow import LLLMMultiAgentFlow
+from core.multi_agent.multi_agent_system import MultiAgentSystem
+from core.rome_model_editor import ROMEModelEditor
+from core.coat_reasoner import COATReasoner
+from core.rgcn_processor import RGCNProcessor
 
 def main():
     parser = argparse.ArgumentParser(description='Run the AI Agent system')
@@ -20,6 +25,7 @@ def main():
     parser.add_argument('--workspace', type=str, default='./workspace', help='The workspace directory for file operations')
     parser.add_argument('--config', type=str, default='./config.json', help='Configuration file path')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument('--mock', action='store_true', help='Run in mock mode without API calls')
     
     args = parser.parse_args()
     
@@ -29,11 +35,19 @@ def main():
         with open(args.config, 'r') as f:
             config = json.load(f)
     
+    openai_api_key = config.get('openai_api_key')
+    mock_mode = args.mock
+    
+    if not openai_api_key and not mock_mode:
+        print("警告: OpenAI APIキーが設定されていません。モックモードで実行します。")
+        mock_mode = True
+    
     # Initialize components
     llm = LLM(
-        api_key=config.get('openai_api_key'),
+        api_key=openai_api_key,
         model=config.get('model', 'gpt-4-turbo'),
-        temperature=config.get('temperature', 0.7)
+        temperature=config.get('temperature', 0.7),
+        mock_mode=mock_mode
     )
     
     # ワークスペースディレクトリを作成
@@ -92,17 +106,38 @@ def main():
     agent.available_tools.add_tool(docker_tool)
     agent.available_tools.add_tool(system_tool)
     
-    # フローの初期化
-    flow = PlanningFlow(llm, task_db)
-    flow.add_agent("auto_plan", agent)
-    flow.set_planning_tool(planning_tool)
+    planning_flow = PlanningFlow(llm, task_db)
+    planning_flow.add_agent("auto_plan", agent)
+    planning_flow.set_planning_tool(planning_tool)
+    
+    lllm_flow = LLLMMultiAgentFlow(
+        llm=llm,
+        task_db=task_db,
+        workspace_dir=args.workspace,
+        config={
+            "device": config.get("device", "cpu"),
+            "tavily_api_key": config.get("tavily_api_key"),
+            "firecrawl_api_key": config.get("firecrawl_api_key"),
+            "rgcn_hidden_dim": config.get("rgcn_hidden_dim", 64),
+            "use_compatibility_mode": config.get("use_compatibility_mode", True),
+            "mock_mode": mock_mode
+        }
+    )
     
     # ゴールが指定されている場合はフローを実行
     if args.goal:
         print(f"Starting execution with goal: '{args.goal}'")
         print(f"Working directory: {args.workspace}")
         
-        result = flow.execute(args.goal)
+        use_lllm = config.get("use_lllm_flow", True)
+        
+        if use_lllm:
+            print("Using LLLM Multi-Agent Flow")
+            result = lllm_flow.execute(args.goal)
+        else:
+            print("Using Traditional Planning Flow")
+            result = planning_flow.execute(args.goal)
+            
         print(result)
     else:
         print("Please provide a goal using the --goal argument")

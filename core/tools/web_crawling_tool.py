@@ -13,15 +13,24 @@ class WebCrawlingTool(BaseTool):
     TavilyをメインのAPIとして使用し、フォールバックとしてFirecrawlを使用
     """
     
-    def __init__(self, tavily_api_key=None, firecrawl_api_key=None, max_results=5):
+    def __init__(self, tavily_api_key=None, firecrawl_api_key=None, max_results=5, use_environment_keys=False, mock_mode=False):
         super().__init__(
             name="web_crawler",
             description="Webから情報を検索・取得するツール"
         )
-        self.tavily_api_key = tavily_api_key or os.environ.get("TAVILY_API_KEY")
-        self.firecrawl_api_key = firecrawl_api_key or os.environ.get("FIRECRAWL_API_KEY")
+        self.tavily_api_key = tavily_api_key
+        self.firecrawl_api_key = firecrawl_api_key
+        
+        if use_environment_keys:
+            self.tavily_api_key = self.tavily_api_key or os.environ.get("TAVILY_API_KEY")
+            self.firecrawl_api_key = self.firecrawl_api_key or os.environ.get("FIRECRAWL_API_KEY")
+            
         self.max_results = max_results
         self.session = requests.Session()
+        self.mock_mode = mock_mode
+        
+        if self.mock_mode:
+            print(f"WebCrawlingToolはモックモードで動作中です。実際のAPIコールは行われません。")
         
     def execute(self, query=None, url=None, search_depth="basic", **kwargs) -> ToolResult:
         """
@@ -35,6 +44,43 @@ class WebCrawlingTool(BaseTool):
         Returns:
             ToolResult: 検索結果または取得したコンテンツ
         """
+        if self.mock_mode:
+            if url:
+                print(f"モックモード: URL '{url}' の取得をシミュレート")
+                return ToolResult(True, {
+                    "url": url,
+                    "title": f"モックページ: {url}",
+                    "content": f"これはモックモードでのURL取得結果です。URL: {url}。この結果はAPIコールなしで生成されています。",
+                    "html": f"<html><head><title>モックページ: {url}</title></head><body><p>これはモックモードでのURL取得結果です。</p></body></html>",
+                    "mock": True
+                })
+            elif query:
+                print(f"モックモード: クエリ '{query}' の検索をシミュレート")
+                return ToolResult(True, {
+                    "query": query,
+                    "results": [
+                        {
+                            "title": f"モック検索結果 1: {query}",
+                            "url": "https://example.com/mock-result-1",
+                            "content": f"これはモックモードでの検索結果です。クエリ: {query}。この結果はAPIコールなしで生成されています。",
+                            "score": 0.95,
+                            "source": "mock"
+                        },
+                        {
+                            "title": f"モック検索結果 2: {query}",
+                            "url": "https://example.com/mock-result-2",
+                            "content": f"これは2つ目のモック検索結果です。クエリ: {query}。実際のAPIコールは行われていません。",
+                            "score": 0.85,
+                            "source": "mock"
+                        }
+                    ],
+                    "search_depth": search_depth,
+                    "total_results": 2,
+                    "mock": True
+                })
+            else:
+                return ToolResult(False, error="クエリまたはURLが必要です")
+        
         try:
             if url:
                 return self._fetch_url(url)
