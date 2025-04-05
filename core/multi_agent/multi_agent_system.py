@@ -447,6 +447,13 @@ class MultiAgentSystem:
         """
         print(f"タスク '{task_id}' の結果を待機中... (タイムアウト: {timeout}秒)")
         
+        if self.coordinator and task_id not in self.coordinator.active_tasks:
+            print(f"警告: タスク '{task_id}' が調整エージェントのアクティブタスクリストに存在しません")
+            return {
+                "success": False,
+                "error": f"タスク '{task_id}' が見つかりません"
+            }
+        
         result = self.run_until_completion(task_id, max_iterations=int(timeout * 10), timeout=timeout)
         
         if "error" in result:
@@ -463,13 +470,33 @@ class MultiAgentSystem:
                         print(f"部分的な結果が {len(results)} 件あります")
                         for agent_id, result_data in results.items():
                             print(f"  エージェント '{agent_id}' からの結果: {result_data.get('timestamp')}")
+                        
+                        if len(results) > 0:
+                            print(f"タスク '{task_id}' は完了していませんが、部分的な結果を返します")
+                            
+                            first_agent_id = list(results.keys())[0]
+                            first_result = results[first_agent_id].get("result", {})
+                            
+                            return {
+                                "success": True,
+                                "result": first_result,
+                                "partial": True,
+                                "warning": "タスクは完了していませんが、部分的な結果を返しています"
+                            }
             
             return {
                 "success": False,
-                "error": result["error"]
+                "error": result.get("error", "タスクが完了しませんでした")
             }
-            
+        
         print(f"タスク '{task_id}' が正常に完了しました")
+        
+        if not isinstance(result, dict):
+            return {
+                "success": True,
+                "result": result
+            }
+        
         return {
             "success": True,
             "result": result
