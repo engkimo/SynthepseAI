@@ -182,6 +182,21 @@ class LLLMMultiAgentFlow(BaseFlow):
             
             result = self.multi_agent_system.wait_for_task_result(task_id, timeout=180)
             
+            print("\n=== 計画生成結果のデバッグ情報 ===")
+            print(f"結果の型: {type(result)}")
+            print(f"結果のキー: {result.keys() if isinstance(result, dict) else 'dict型ではありません'}")
+            
+            if isinstance(result, dict) and "result" in result:
+                print(f"result['result']の型: {type(result['result'])}")
+                print(f"result['result']のキー: {result['result'].keys() if isinstance(result['result'], dict) else 'dict型ではありません'}")
+                
+                if isinstance(result['result'], dict) and "tasks" in result['result']:
+                    print(f"タスク数: {len(result['result']['tasks'])}")
+                    print(f"最初のタスク: {result['result']['tasks'][0] if result['result']['tasks'] else 'タスクなし'}")
+                else:
+                    print("result['result']にtasksキーがありません")
+            print("=== デバッグ情報終了 ===\n")
+            
             if not result["success"]:
                 error_msg = result.get("error", "計画生成中にエラーが発生しました")
                 print(f"計画生成エラー: {error_msg}")
@@ -219,35 +234,67 @@ class LLLMMultiAgentFlow(BaseFlow):
             
             if "result" in result and isinstance(result["result"], dict):
                 result_data = result["result"]
-                if "plan_id" not in result_data:
-                    print("警告: 結果に plan_id が含まれていません。デフォルト値を使用します。")
-                    result_data["plan_id"] = f"plan_{int(time.time())}"
                 
-                plan_id = result_data["plan_id"]
-                tasks = result_data.get("tasks", [])
+                if "coordinator" in result_data and isinstance(result_data["coordinator"], dict):
+                    coordinator_result = result_data["coordinator"]
+                    print(f"コーディネーターからの結果を抽出: {coordinator_result.keys() if isinstance(coordinator_result, dict) else 'dict型ではありません'}")
+                    
+                    if isinstance(coordinator_result, dict):
+                        if "plan_id" in coordinator_result:
+                            plan_id = coordinator_result["plan_id"]
+                            tasks = coordinator_result.get("tasks", [])
+                            print(f"コーディネーターから直接抽出したタスク数: {len(tasks)}")
+                        elif "result" in coordinator_result and isinstance(coordinator_result["result"], dict):
+                            inner_result = coordinator_result["result"]
+                            if "plan_id" in inner_result:
+                                plan_id = inner_result["plan_id"]
+                                tasks = inner_result.get("tasks", [])
+                                print(f"コーディネーターのresultから抽出したタスク数: {len(tasks)}")
+                            else:
+                                print("警告: コーディネーターのresultに plan_id が含まれていません。デフォルト値を使用します。")
+                                plan_id = f"plan_{int(time.time())}"
+                                tasks = []
+                        else:
+                            print("警告: コーディネーター結果に plan_id が含まれていません。デフォルト値を使用します。")
+                            plan_id = f"plan_{int(time.time())}"
+                            tasks = []
+                    else:
+                        print("警告: コーディネーター結果が辞書型ではありません。デフォルト値を使用します。")
+                        plan_id = f"plan_{int(time.time())}"
+                        tasks = []
+                else:
+                    if "plan_id" in result_data:
+                        plan_id = result_data["plan_id"]
+                        tasks = result_data.get("tasks", [])
+                        print(f"結果から直接抽出したタスク数: {len(tasks)}")
+                    else:
+                        print("警告: 結果に plan_id が含まれていません。デフォルト値を使用します。")
+                        plan_id = f"plan_{int(time.time())}"
+                        tasks = []
             else:
                 print("警告: 結果が予期された形式ではありません。デフォルト値を使用します。")
                 plan_id = f"plan_{int(time.time())}"
                 tasks = []
-                
-                if isinstance(result, dict) and "success" in result and result["success"]:
-                    tasks = [
-                        {
-                            "id": "task_1",
-                            "description": "情報を収集する",
-                            "dependencies": []
-                        },
-                        {
-                            "id": "task_2",
-                            "description": "収集した情報を分析する",
-                            "dependencies": ["task_1"]
-                        },
-                        {
-                            "id": "task_3",
-                            "description": "分析結果をまとめる",
-                            "dependencies": ["task_2"]
-                        }
-                    ]
+            
+            if not tasks and isinstance(result, dict) and "success" in result and result["success"]:
+                print("タスクが空のため、デフォルトタスクを生成します")
+                tasks = [
+                    {
+                        "id": "task_1",
+                        "description": "情報を収集する",
+                        "dependencies": []
+                    },
+                    {
+                        "id": "task_2",
+                        "description": "収集した情報を分析する",
+                        "dependencies": ["task_1"]
+                    },
+                    {
+                        "id": "task_3",
+                        "description": "分析結果をまとめる",
+                        "dependencies": ["task_2"]
+                    }
+                ]
             
             for i, task_info in enumerate(tasks):
                 self.task_db.add_task(

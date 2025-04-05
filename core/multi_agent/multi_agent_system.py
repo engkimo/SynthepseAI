@@ -248,29 +248,74 @@ class MultiAgentSystem:
         results = {}
         total_processed = 0
         
-        for agent_id, agent in self.agents.items():
-            queue_size = len(agent.message_queue)
-            if queue_size > 0:
-                print(f"エージェント '{agent_id}' のメッセージキュー: {queue_size}件")
+        if isinstance(self.agents, dict):
+            for agent_id, agent in self.agents.items():
+                queue_size = len(agent.message_queue)
+                if queue_size > 0:
+                    print(f"エージェント '{agent_id}' のメッセージキュー: {queue_size}件")
+        elif isinstance(self.agents, list):
+            for agent in self.agents:
+                if hasattr(agent, 'agent_id') and hasattr(agent, 'message_queue'):
+                    queue_size = len(agent.message_queue)
+                    if queue_size > 0:
+                        print(f"エージェント '{agent.agent_id}' のメッセージキュー: {queue_size}件")
         
-        for agent_id, agent in self.agents.items():
-            responses = agent.process_messages()
-            total_processed += len(responses)
-            
-            if responses:
-                print(f"エージェント '{agent_id}' が {len(responses)} 件のメッセージを処理しました")
-                results[agent_id] = responses
+        if isinstance(self.agents, dict):
+            for agent_id, agent in self.agents.items():
+                responses = agent.process_messages()
+                total_processed += len(responses)
                 
-                for response in responses:
-                    if response.receiver_id in self.agents:
-                        receiver = self.agents[response.receiver_id]
-                        print(f"メッセージを '{response.receiver_id}' に転送: タイプ={response.message_type}")
-                        receiver.receive_message(response)
-                    elif response.receiver_id == "broadcast":
-                        print(f"ブロードキャストメッセージを送信: タイプ={response.message_type}")
-                        for other_id, other_agent in self.agents.items():
-                            if other_id != agent_id:
-                                other_agent.receive_message(response)
+                if responses:
+                    print(f"エージェント '{agent_id}' が {len(responses)} 件のメッセージを処理しました")
+                    results[agent_id] = responses
+                    
+                    for response in responses:
+                        self._forward_message(response, agent_id)
+        elif isinstance(self.agents, list):
+            for agent in self.agents:
+                if hasattr(agent, 'agent_id') and hasattr(agent, 'process_messages'):
+                    agent_id = agent.agent_id
+                    responses = agent.process_messages()
+                    total_processed += len(responses)
+                    
+                    if responses:
+                        print(f"エージェント '{agent_id}' が {len(responses)} 件のメッセージを処理しました")
+                        results[agent_id] = responses
+                        
+                        for response in responses:
+                            self._forward_message(response, agent_id)
+        
+        if total_processed > 0:
+            print(f"合計 {total_processed} 件のメッセージが処理されました")
+            
+        return results
+        
+    def _forward_message(self, message, sender_agent_id):
+        """メッセージを転送"""
+        total_processed = 0
+        results = []
+        
+        if message.receiver_id == "broadcast":
+            print(f"ブロードキャストメッセージを送信: タイプ={message.message_type}")
+            
+            if isinstance(self.agents, dict):
+                for other_id, other_agent in self.agents.items():
+                    if other_id != sender_agent_id:
+                        other_agent.receive_message(message)
+                        total_processed += 1
+            elif isinstance(self.agents, list):
+                for other_agent in self.agents:
+                    if hasattr(other_agent, 'agent_id') and other_agent.agent_id != sender_agent_id:
+                        other_agent.receive_message(message)
+                        total_processed += 1
+        else:
+            receiver = self._get_agent_by_id(message.receiver_id)
+            if receiver:
+                print(f"メッセージを '{message.receiver_id}' に転送: タイプ={message.message_type}")
+                receiver.receive_message(message)
+                total_processed += 1
+            else:
+                print(f"警告: 受信者 '{message.receiver_id}' が見つかりません。メッセージは破棄されます。")
         
         if total_processed > 0:
             print(f"合計 {total_processed} 件のメッセージが処理されました")
@@ -299,11 +344,25 @@ class MultiAgentSystem:
         if target_agents:
             valid_agents = []
             for agent_id in target_agents:
-                if agent_id in self.agents:
+                agent_exists = False
+                
+                if isinstance(self.agents, dict):
+                    agent_exists = agent_id in self.agents
+                elif isinstance(self.agents, list):
+                    agent_exists = any(hasattr(a, 'agent_id') and a.agent_id == agent_id for a in self.agents)
+                
+                if agent_exists:
                     valid_agents.append(agent_id)
                 else:
                     print(f"警告: ターゲットエージェント '{agent_id}' が見つかりません")
-                    print(f"利用可能なエージェント: {list(self.agents.keys())}")
+                    
+                    if isinstance(self.agents, dict):
+                        print(f"利用可能なエージェント: {list(self.agents.keys())}")
+                    elif isinstance(self.agents, list):
+                        print(f"利用可能なエージェント: {[a.agent_id for a in self.agents if hasattr(a, 'agent_id')]}")
+                    else:
+                        print(f"エージェントコンテナの型が不明です: {type(self.agents)}")
+                    
                     if agent_id == "coordinator" and self.coordinator:
                         print(f"'coordinator' を '{self.coordinator.agent_id}' に置き換えます")
                         valid_agents.append(self.coordinator.agent_id)
@@ -478,7 +537,19 @@ class MultiAgentSystem:
         if agent_id == "coordinator" and self.coordinator:
             return self.coordinator
             
-        return next((a for a in self.agents if a.agent_id == agent_id), None)
+        if isinstance(self.agents, dict):
+            return self.agents.get(agent_id)
+        
+        elif isinstance(self.agents, list):
+            if not all(hasattr(a, 'agent_id') for a in self.agents):
+                print(f"警告: エージェントリストに無効なオブジェクトが含まれています: {self.agents}")
+                self.agents = [a for a in self.agents if hasattr(a, 'agent_id')]
+                
+            return next((a for a in self.agents if a.agent_id == agent_id), None)
+        
+        else:
+            print(f"警告: エージェントコンテナの型が不明です: {type(self.agents)}")
+            return None
         
     def wait_for_task_result(self, task_id: str, timeout: float = 30.0) -> Dict[str, Any]:
         """

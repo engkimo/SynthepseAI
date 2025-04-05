@@ -507,12 +507,13 @@ class CoordinatorAgent(MultiAgentBase):
         """
         
         for task in task_results:
-            task_id = task.get("id", "")
+            task_id_in_result = task.get("id", "")
             description = task.get("description", "")
             status = task.get("status", "")
             
-            summary += f"\n- タスク {task_id}: {description} ({status})"
+            summary += f"\n- タスク {task_id_in_result}: {description} ({status})"
         
+        # タスク結果を追加
         self.add_task_result(
             task_id=task_id,
             agent_id=self.agent_id,
@@ -524,15 +525,18 @@ class CoordinatorAgent(MultiAgentBase):
         
         self.update_task_status(task_id, "completed")
         
-        requester_id = self.active_tasks[task_id].get("requester_id")
-        if requester_id:
-            notification = self.send_message(
-                receiver_id=requester_id,
-                content={"summary": summary},
-                message_type="task_completed",
-                metadata={"task_id": task_id}
-            )
-            responses.append(notification)
+        if task_id in self.active_tasks:
+            requester_id = self.active_tasks[task_id].get("requester_id")
+            if requester_id:
+                notification = self.send_message(
+                    receiver_id=requester_id,
+                    content={"summary": summary},
+                    message_type="task_completed",
+                    metadata={"task_id": task_id}
+                )
+                responses.append(notification)
+        else:
+            print(f"警告: タスク '{task_id}' が見つかりません。結果通知をスキップします。")
         
     def _handle_generate_plan_task(self, content: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -593,42 +597,110 @@ class CoordinatorAgent(MultiAgentBase):
                     
                     return {
                         "success": True,
-                        "plan_id": plan_id,
-                        "tasks": tasks
+                        "result": {
+                            "plan_id": plan_id,
+                            "tasks": tasks
+                        }
                     }
                     
                 except Exception as e:
                     return {
                         "success": False,
-                        "error": f"計画データの解析に失敗しました: {str(e)}"
+                        "error": f"計画データの解析に失敗しました: {str(e)}",
+                        "result": {
+                            "plan_id": plan_id,
+                            "tasks": []
+                        }
                     }
             else:
+                mock_tasks = [
+                    {
+                        "id": "task_1",
+                        "description": f"{goal}に関する情報を収集する",
+                        "dependencies": []
+                    },
+                    {
+                        "id": "task_2",
+                        "description": f"収集した情報を分析する",
+                        "dependencies": ["task_1"]
+                    },
+                    {
+                        "id": "task_3",
+                        "description": f"分析結果をまとめる",
+                        "dependencies": ["task_2"]
+                    }
+                ]
+                
+                if "ソフトバンク" in goal or "SoftBank" in goal:
+                    if "クリスタルインテリジェンス" in goal or "Crystal Intelligence" in goal:
+                        mock_tasks = [
+                            {
+                                "id": "task_1",
+                                "description": "ソフトバンクのクリスタルインテリジェンスに関する基本情報を収集する",
+                                "dependencies": []
+                            },
+                            {
+                                "id": "task_2",
+                                "description": "クリスタルインテリジェンスの技術的特徴と革新性を分析する",
+                                "dependencies": ["task_1"]
+                            },
+                            {
+                                "id": "task_3",
+                                "description": "クリスタルインテリジェンスの市場における位置づけと競合技術を調査する",
+                                "dependencies": ["task_1"]
+                            },
+                            {
+                                "id": "task_4",
+                                "description": "クリスタルインテリジェンスの将来的な発展方向と可能性を予測する",
+                                "dependencies": ["task_2", "task_3"]
+                            },
+                            {
+                                "id": "task_5",
+                                "description": "クリスタルインテリジェンスがAI業界全体に与える影響を考察する",
+                                "dependencies": ["task_4"]
+                            }
+                        ]
+                    else:
+                        mock_tasks.append({
+                            "id": "task_4",
+                            "description": "ソフトバンクの最新の技術投資動向を調査する",
+                            "dependencies": ["task_1"]
+                        })
+                        mock_tasks.append({
+                            "id": "task_5",
+                            "description": "ソフトバンクの技術戦略と将来展望を分析する",
+                            "dependencies": ["task_2"]
+                        })
+                elif "財務省" in goal or "Ministry of Finance" in goal:
+                    mock_tasks.append({
+                        "id": "task_4",
+                        "description": "財務省の最近の政策動向を調査する",
+                        "dependencies": ["task_1"]
+                    })
+                    mock_tasks.append({
+                        "id": "task_5",
+                        "description": "デモの背景となる経済状況を分析する",
+                        "dependencies": ["task_2"]
+                    })
+                
+                print(f"モックモード: {len(mock_tasks)}個のタスクを生成しました")
+                
                 return {
                     "success": True,
-                    "plan_id": plan_id,
-                    "tasks": [
-                        {
-                            "id": "task_1",
-                            "description": f"{goal}に関する情報を収集する",
-                            "dependencies": []
-                        },
-                        {
-                            "id": "task_2",
-                            "description": f"収集した情報を分析する",
-                            "dependencies": ["task_1"]
-                        },
-                        {
-                            "id": "task_3",
-                            "description": f"分析結果をまとめる",
-                            "dependencies": ["task_2"]
-                        }
-                    ]
+                    "result": {
+                        "plan_id": plan_id,
+                        "tasks": mock_tasks
+                    }
                 }
                 
         except Exception as e:
             return {
                 "success": False,
-                "error": f"計画生成中にエラーが発生しました: {str(e)}"
+                "error": f"計画生成中にエラーが発生しました: {str(e)}",
+                "result": {
+                    "plan_id": f"plan_{int(time.time())}",
+                    "tasks": []
+                }
             }
     
     def broadcast_message(self, content: Any, message_type: str = "broadcast", metadata: Optional[Dict[str, Any]] = None) -> List[AgentMessage]:
