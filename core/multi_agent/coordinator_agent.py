@@ -333,32 +333,28 @@ class CoordinatorAgent(MultiAgentBase):
             if task_id and task_id in self.active_tasks:
                 print(f"コーディネーターがタスク '{task_id}' を処理中... タイプ: {task_type}")
                 self.update_task_status(task_id, "processing")
-            
-            if task_id and task_type == "generate_plan":
-                print(f"計画生成タスク '{task_id}' の処理を開始")
-                plan_result = self._handle_generate_plan_task(message.content)
                 
-                print(f"計画生成タスク '{task_id}' の結果を追加")
-                self.add_task_result(
-                    task_id=task_id,
-                    agent_id=self.agent_id,
-                    result=plan_result
-                )
-                
-                if task_id in self.active_tasks:
-                    print(f"計画生成タスク '{task_id}' を完了としてマークします")
+                if task_type == "generate_plan":
+                    self._process_generate_plan_task(task_id, message, responses)
+                elif task_type == "execute_task":
+                    self._process_execute_task(task_id, message, responses)
+                elif task_type == "analyze_task":
+                    self._process_analyze_task(task_id, message, responses)
+                elif task_type == "generate_summary":
+                    self._process_generate_summary_task(task_id, message, responses)
+                else:
+                    print(f"警告: 未知のタスクタイプ '{task_type}' です")
+                    self.add_task_result(
+                        task_id=task_id,
+                        agent_id=self.agent_id,
+                        result={
+                            "success": False,
+                            "error": f"未知のタスクタイプ: {task_type}"
+                        }
+                    )
                     self.update_task_status(task_id, "completed")
-                    
-                    requester_id = self.active_tasks[task_id].get("requester_id")
-                    if requester_id:
-                        print(f"計画生成タスク '{task_id}' の完了を通知: {requester_id}")
-                        notification = self.send_message(
-                            receiver_id=requester_id,
-                            content=plan_result,
-                            message_type="task_completed",
-                            metadata={"task_id": task_id}
-                        )
-                        responses.append(notification)
+            else:
+                print(f"警告: タスク '{task_id}' が見つからないか、IDが指定されていません")
         
         elif message.message_type == "heartbeat":
             if message.sender_id in self.registered_agents:
@@ -366,6 +362,177 @@ class CoordinatorAgent(MultiAgentBase):
                 self.registered_agents[message.sender_id]["status"] = "active"
         
         return responses
+        
+    def _process_generate_plan_task(self, task_id: str, message: AgentMessage, responses: List[AgentMessage]):
+        """
+        計画生成タスクを処理
+        
+        Args:
+            task_id: タスクID
+            message: 受信したメッセージ
+            responses: 応答メッセージのリスト
+        """
+        print(f"計画生成タスク '{task_id}' の処理を開始")
+        plan_result = self._handle_generate_plan_task(message.content)
+        
+        print(f"計画生成タスク '{task_id}' の結果を追加")
+        self.add_task_result(
+            task_id=task_id,
+            agent_id=self.agent_id,
+            result=plan_result
+        )
+        
+        if task_id in self.active_tasks:
+            print(f"計画生成タスク '{task_id}' を完了としてマークします")
+            self.update_task_status(task_id, "completed")
+            
+            requester_id = self.active_tasks[task_id].get("requester_id")
+            if requester_id:
+                print(f"計画生成タスク '{task_id}' の完了を通知: {requester_id}")
+                notification = self.send_message(
+                    receiver_id=requester_id,
+                    content=plan_result,
+                    message_type="task_completed",
+                    metadata={"task_id": task_id}
+                )
+                responses.append(notification)
+                
+    def _process_execute_task(self, task_id: str, message: AgentMessage, responses: List[AgentMessage]):
+        """
+        タスク実行処理
+        
+        Args:
+            task_id: タスクID
+            message: 受信したメッセージ
+            responses: 応答メッセージのリスト
+        """
+        print(f"タスク実行 '{task_id}' の処理")
+        content = message.content
+        
+        self.add_task_result(
+            task_id=task_id,
+            agent_id=self.agent_id,
+            result={
+                "success": True,
+                "message": "タスク実行が完了しました",
+                "task_id": content.get("task_id", ""),
+                "description": content.get("description", "")
+            }
+        )
+        
+        self.update_task_status(task_id, "completed")
+        
+        requester_id = self.active_tasks[task_id].get("requester_id")
+        if requester_id:
+            notification = self.send_message(
+                receiver_id=requester_id,
+                content=self.get_task_results(task_id),
+                message_type="task_completed",
+                metadata={"task_id": task_id}
+            )
+            responses.append(notification)
+            
+    def _process_analyze_task(self, task_id: str, message: AgentMessage, responses: List[AgentMessage]):
+        """
+        タスク分析処理
+        
+        Args:
+            task_id: タスクID
+            message: 受信したメッセージ
+            responses: 応答メッセージのリスト
+        """
+        print(f"タスク分析 '{task_id}' の処理")
+        content = message.content
+        description = content.get("description", "")
+        
+        analysis_result = {
+            "task_type": "general",
+            "complexity": "medium",
+            "required_tools": ["python_execute"]
+        }
+        
+        if "検索" in description or "情報収集" in description or "調査" in description:
+            analysis_result["task_type"] = "web_search"
+            analysis_result["required_tools"] = ["web_crawler"]
+        elif "コード" in description or "プログラム" in description or "実装" in description:
+            analysis_result["task_type"] = "code_generation"
+            analysis_result["required_tools"] = ["python_execute"]
+        elif "分析" in description or "評価" in description or "検証" in description:
+            analysis_result["task_type"] = "analysis"
+            analysis_result["required_tools"] = ["python_execute"]
+        
+        self.add_task_result(
+            task_id=task_id,
+            agent_id=self.agent_id,
+            result=analysis_result
+        )
+        
+        self.update_task_status(task_id, "completed")
+        
+        requester_id = self.active_tasks[task_id].get("requester_id")
+        if requester_id:
+            notification = self.send_message(
+                receiver_id=requester_id,
+                content=analysis_result,
+                message_type="task_completed",
+                metadata={"task_id": task_id}
+            )
+            responses.append(notification)
+            
+    def _process_generate_summary_task(self, task_id: str, message: AgentMessage, responses: List[AgentMessage]):
+        """
+        要約生成処理
+        
+        Args:
+            task_id: タスクID
+            message: 受信したメッセージ
+            responses: 応答メッセージのリスト
+        """
+        print(f"要約生成 '{task_id}' の処理")
+        content = message.content
+        
+        plan_id = content.get("plan_id", "")
+        completed_tasks = content.get("completed_tasks", 0)
+        failed_tasks = content.get("failed_tasks", 0)
+        task_results = content.get("task_results", [])
+        
+        summary = f"""
+        実行結果サマリー:
+        
+        計画ID: {plan_id}
+        完了タスク: {completed_tasks}
+        失敗タスク: {failed_tasks}
+        
+        タスク詳細:
+        """
+        
+        for task in task_results:
+            task_id = task.get("id", "")
+            description = task.get("description", "")
+            status = task.get("status", "")
+            
+            summary += f"\n- タスク {task_id}: {description} ({status})"
+        
+        self.add_task_result(
+            task_id=task_id,
+            agent_id=self.agent_id,
+            result={
+                "success": True,
+                "summary": summary
+            }
+        )
+        
+        self.update_task_status(task_id, "completed")
+        
+        requester_id = self.active_tasks[task_id].get("requester_id")
+        if requester_id:
+            notification = self.send_message(
+                receiver_id=requester_id,
+                content={"summary": summary},
+                message_type="task_completed",
+                metadata={"task_id": task_id}
+            )
+            responses.append(notification)
         
     def _handle_generate_plan_task(self, content: Dict[str, Any]) -> Dict[str, Any]:
         """
