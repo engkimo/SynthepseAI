@@ -2,6 +2,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 import json
 import time
 import uuid
+import traceback
 
 from .agent_base import MultiAgentBase, AgentRole, AgentMessage
 from ..coat_reasoner import COATReasoner
@@ -18,7 +19,8 @@ class ReasoningAgent(MultiAgentBase):
         agent_id: str = "reasoning_agent",
         name: str = "推論エージェント",
         description: str = "自己反省型の推論を行い、問題解決を支援する",
-        llm=None
+        llm=None,
+        config: Optional[Dict[str, Any]] = None
     ):
         """
         推論エージェントの初期化
@@ -28,6 +30,7 @@ class ReasoningAgent(MultiAgentBase):
             name: エージェント名
             description: エージェントの説明
             llm: 使用するLLMインスタンス
+            config: 設定情報
         """
         super().__init__(
             agent_id=agent_id,
@@ -37,8 +40,17 @@ class ReasoningAgent(MultiAgentBase):
             llm=llm
         )
         
-        self.coat_reasoner = COATReasoner(llm) if llm else None
+        self.config = config or {}
+        self.mock_mode = self.config.get("mock_mode", False)
+        
+        if self.mock_mode:
+            print(f"推論エージェント '{agent_id}' はモックモードで動作中です")
+            self.coat_reasoner = None
+        else:
+            self.coat_reasoner = COATReasoner(llm) if llm else None
+            
         self.reasoning_history = []
+        self.task_processing_errors = {}
         
     def generate_reasoning_chain(
         self, 
@@ -205,129 +217,205 @@ class ReasoningAgent(MultiAgentBase):
             task_id = metadata.get("task_id")
             task_type = metadata.get("task_type")
             
-            if task_type == "reasoning_chain":
-                content = message.content
-                task_description = content.get("task_description", "")
-                current_state = content.get("current_state", "")
-                max_steps = content.get("max_steps", 5)
-                
-                result = self.generate_reasoning_chain(
-                    task_description=task_description,
-                    current_state=current_state,
-                    max_steps=max_steps
-                )
-                
-                response = self.send_message(
-                    receiver_id=message.sender_id,
-                    content=result,
-                    message_type="task_result",
-                    metadata={"task_id": task_id}
-                )
-                responses.append(response)
-                
-            elif task_type == "fix_code":
-                content = message.content
-                code = content.get("code", "")
-                error_message = content.get("error_message", "")
-                
-                fixed_code, coat_chain = self.fix_code_with_reasoning(
-                    code=code,
-                    error_message=error_message
-                )
-                
-                response = self.send_message(
-                    receiver_id=message.sender_id,
-                    content={
-                        "fixed_code": fixed_code,
-                        "reasoning_chain": coat_chain
-                    },
-                    message_type="task_result",
-                    metadata={"task_id": task_id}
-                )
-                responses.append(response)
-                
-            elif task_type == "analyze_problem":
-                content = message.content
-                problem_description = content.get("problem_description", "")
-                
-                analysis = self.analyze_problem(problem_description)
-                
-                response = self.send_message(
-                    receiver_id=message.sender_id,
-                    content=analysis,
-                    message_type="task_result",
-                    metadata={"task_id": task_id}
-                )
-                responses.append(response)
-                
-            elif task_type == "analyze_task":
-                content = message.content
-                description = content.get("description", "")
-                
-                analysis_result = {}
-                
-                if self.llm:
-                    prompt = f"""
-                    以下のタスクを分析し、必要なツールと複雑さを評価してください：
+            print(f"推論エージェント: タスク '{task_id}' (タイプ: {task_type}) の処理を開始します")
+            
+            try:
+                if self.mock_mode:
+                    print(f"推論エージェント: モックモードでタスク '{task_id}' を処理します")
+                    mock_result = self._generate_mock_result(task_type, message.content)
                     
-                    タスク: {description}
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=mock_result,
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' のモック結果を送信しました")
+                    responses.append(response)
+                    return responses
+                
+                if task_type == "reasoning_chain":
+                    content = message.content
+                    task_description = content.get("task_description", "")
+                    current_state = content.get("current_state", "")
+                    max_steps = content.get("max_steps", 5)
                     
-                    以下の形式で回答してください：
+                    print(f"推論エージェント: 推論チェーンを生成します: '{task_description[:50]}...'")
                     
-                    タスクタイプ: [web_search/code_generation/analysis/general]
-                    複雑さ: [low/medium/high]
-                    必要なツール: [ツールのリスト（例: web_crawler, python_execute）]
-                    """
+                    result = self.generate_reasoning_chain(
+                        task_description=task_description,
+                        current_state=current_state,
+                        max_steps=max_steps
+                    )
                     
-                    analysis_text = self.llm.generate_text(prompt)
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=result,
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' の推論チェーン結果を送信しました")
+                    responses.append(response)
                     
-                    for line in analysis_text.split('\n'):
-                        line = line.strip()
-                        if line.startswith("タスクタイプ:"):
-                            analysis_result["task_type"] = line[len("タスクタイプ:"):].strip()
-                        elif line.startswith("複雑さ:"):
-                            analysis_result["complexity"] = line[len("複雑さ:"):].strip()
-                        elif line.startswith("必要なツール:"):
-                            tools_str = line[len("必要なツール:"):].strip()
-                            analysis_result["required_tools"] = [t.strip() for t in tools_str.split(',')]
+                elif task_type == "fix_code":
+                    content = message.content
+                    code = content.get("code", "")
+                    error_message = content.get("error_message", "")
+                    
+                    print(f"推論エージェント: コード修正を行います: エラー '{error_message[:50]}...'")
+                    
+                    fixed_code, coat_chain = self.fix_code_with_reasoning(
+                        code=code,
+                        error_message=error_message
+                    )
+                    
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content={
+                            "fixed_code": fixed_code,
+                            "reasoning_chain": coat_chain
+                        },
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' のコード修正結果を送信しました")
+                    responses.append(response)
+                    
+                elif task_type == "analyze_problem":
+                    content = message.content
+                    problem_description = content.get("problem_description", "")
+                    
+                    print(f"推論エージェント: 問題分析を行います: '{problem_description[:50]}...'")
+                    
+                    analysis = self.analyze_problem(problem_description)
+                    
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=analysis,
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' の問題分析結果を送信しました")
+                    responses.append(response)
+                    
+                elif task_type == "analyze_task":
+                    content = message.content
+                    description = content.get("description", "")
+                    
+                    print(f"推論エージェント: タスク分析を行います: '{description[:50]}...'")
+                    
+                    analysis_result = {}
+                    
+                    if self.llm:
+                        prompt = f"""
+                        以下のタスクを分析し、必要なツールと複雑さを評価してください：
+                        
+                        タスク: {description}
+                        
+                        以下の形式で回答してください：
+                        
+                        タスクタイプ: [web_search/code_generation/analysis/general]
+                        複雑さ: [low/medium/high]
+                        必要なツール: [ツールのリスト（例: web_crawler, python_execute）]
+                        """
+                        
+                        analysis_text = self.llm.generate_text(prompt)
+                        
+                        for line in analysis_text.split('\n'):
+                            line = line.strip()
+                            if line.startswith("タスクタイプ:"):
+                                analysis_result["task_type"] = line[len("タスクタイプ:"):].strip()
+                            elif line.startswith("複雑さ:"):
+                                analysis_result["complexity"] = line[len("複雑さ:"):].strip()
+                            elif line.startswith("必要なツール:"):
+                                tools_str = line[len("必要なツール:"):].strip()
+                                analysis_result["required_tools"] = [t.strip() for t in tools_str.split(',')]
+                    else:
+                        analysis_result = {
+                            "task_type": "general",
+                            "complexity": "medium",
+                            "required_tools": ["python_execute"]
+                        }
+                        
+                        if "検索" in description or "情報収集" in description or "調査" in description:
+                            analysis_result["task_type"] = "web_search"
+                            analysis_result["required_tools"] = ["web_crawler"]
+                        elif "コード" in description or "プログラム" in description or "実装" in description:
+                            analysis_result["task_type"] = "code_generation"
+                            analysis_result["required_tools"] = ["python_execute"]
+                        elif "分析" in description or "評価" in description or "検証" in description:
+                            analysis_result["task_type"] = "analysis"
+                            analysis_result["required_tools"] = ["python_execute"]
+                    
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=analysis_result,
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' のタスク分析結果を送信しました")
+                    responses.append(response)
+                    
+                elif task_type == "generate_plan":
+                    content = message.content
+                    goal = content.get("goal", "")
+                    context = content.get("context", "")
+                    
+                    print(f"推論エージェント: 計画生成を行います: '{goal[:50]}...'")
+                    
+                    plan = self.generate_plan(goal, context)
+                    
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=plan,
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' の計画生成結果を送信しました")
+                    responses.append(response)
                 else:
-                    analysis_result = {
-                        "task_type": "general",
-                        "complexity": "medium",
-                        "required_tools": ["python_execute"]
+                    print(f"推論エージェント: 未知のタスクタイプ '{task_type}' です。デフォルト応答を生成します。")
+                    
+                    default_response = {
+                        "success": False,
+                        "error": f"未知のタスクタイプ: {task_type}",
+                        "message": "このタスクタイプは推論エージェントでは処理できません。"
                     }
                     
-                    if "検索" in description or "情報収集" in description or "調査" in description:
-                        analysis_result["task_type"] = "web_search"
-                        analysis_result["required_tools"] = ["web_crawler"]
-                    elif "コード" in description or "プログラム" in description or "実装" in description:
-                        analysis_result["task_type"] = "code_generation"
-                        analysis_result["required_tools"] = ["python_execute"]
-                    elif "分析" in description or "評価" in description or "検証" in description:
-                        analysis_result["task_type"] = "analysis"
-                        analysis_result["required_tools"] = ["python_execute"]
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=default_response,
+                        message_type="task_result",
+                        metadata={"task_id": task_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' のデフォルト応答を送信しました")
+                    responses.append(response)
+                
+            except Exception as e:
+                error_message = str(e)
+                stack_trace = traceback.format_exc()
+                print(f"推論エージェント: タスク '{task_id}' の処理中にエラーが発生しました: {error_message}")
+                print(f"スタックトレース:\n{stack_trace}")
+                
+                self.task_processing_errors[task_id] = {
+                    "error": error_message,
+                    "stack_trace": stack_trace,
+                    "timestamp": time.time()
+                }
+                
+                error_response = {
+                    "success": False,
+                    "error": error_message,
+                    "message": "タスク処理中にエラーが発生しました。"
+                }
                 
                 response = self.send_message(
                     receiver_id=message.sender_id,
-                    content=analysis_result,
+                    content=error_response,
                     message_type="task_result",
                     metadata={"task_id": task_id}
                 )
-                responses.append(response)
-                
-            elif task_type == "generate_plan":
-                content = message.content
-                goal = content.get("goal", "")
-                context = content.get("context", "")
-                
-                plan = self.generate_plan(goal, context)
-                
-                response = self.send_message(
-                    receiver_id=message.sender_id,
-                    content=plan,
-                    message_type="task_result",
-                    metadata={"task_id": task_id}
-                )
+                print(f"推論エージェント: タスク '{task_id}' のエラー応答を送信しました")
                 responses.append(response)
         
         return responses
@@ -335,3 +423,86 @@ class ReasoningAgent(MultiAgentBase):
     def get_reasoning_history(self) -> List[Dict[str, Any]]:
         """推論履歴を取得"""
         return self.reasoning_history
+        
+    def _generate_mock_result(self, task_type: str, content: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        モックモード用の結果を生成
+        
+        Args:
+            task_type: タスクタイプ
+            content: タスク内容
+            
+        Returns:
+            モック結果
+        """
+        print(f"モック結果を生成: タスクタイプ={task_type}")
+        
+        if task_type == "reasoning_chain":
+            task_description = content.get("task_description", "")
+            return {
+                "chain": [
+                    {"thought": f"タスク '{task_description[:30]}...' について考えています", "action": "情報を分析する"},
+                    {"thought": "関連する概念を整理します", "action": "概念を構造化する"},
+                    {"thought": "解決策を検討します", "action": "最適な解決策を選択する"}
+                ],
+                "solution": f"タスク '{task_description[:30]}...' に対するモック解決策です。これは実際のAPIコールなしで生成されています。",
+                "mock": True
+            }
+            
+        elif task_type == "fix_code":
+            code = content.get("code", "")
+            error_message = content.get("error_message", "")
+            return {
+                "fixed_code": f"# モックで修正されたコード\n# 元のエラー: {error_message}\n\n{code}\n# このコードはモックモードで修正されました",
+                "reasoning_chain": [
+                    {"thought": f"エラー '{error_message[:30]}...' を分析しています", "action": "エラーの原因を特定する"},
+                    {"thought": "コードの問題箇所を特定しました", "action": "コードを修正する"}
+                ],
+                "mock": True
+            }
+            
+        elif task_type == "analyze_problem":
+            problem_description = content.get("problem_description", "")
+            return {
+                "understanding": f"問題 '{problem_description[:30]}...' の理解（モック）",
+                "challenges": "モックで生成された課題リスト",
+                "solution": "モックで生成された解決策",
+                "next_steps": "モックで生成された次のステップ",
+                "mock": True
+            }
+            
+        elif task_type == "analyze_task":
+            description = content.get("description", "")
+            task_type_guess = "web_search"
+            
+            if "コード" in description or "プログラム" in description:
+                task_type_guess = "code_generation"
+            elif "分析" in description or "評価" in description:
+                task_type_guess = "analysis"
+                
+            return {
+                "task_type": task_type_guess,
+                "complexity": "medium",
+                "required_tools": ["web_crawler"] if task_type_guess == "web_search" else ["python_execute"],
+                "mock": True
+            }
+            
+        elif task_type == "generate_plan":
+            goal = content.get("goal", "")
+            return {
+                "title": f"'{goal[:30]}...' のためのモック計画",
+                "description": "これはモックモードで生成された計画です。実際のAPIコールは行われていません。",
+                "steps": [
+                    {"id": 1, "name": "情報収集", "description": "関連情報を収集します"},
+                    {"id": 2, "name": "分析", "description": "収集した情報を分析します"},
+                    {"id": 3, "name": "実装", "description": "分析結果に基づいて実装します"},
+                    {"id": 4, "name": "評価", "description": "実装結果を評価します"}
+                ],
+                "mock": True
+            }
+            
+        else:
+            return {
+                "message": f"未知のタスクタイプ '{task_type}' に対するモック結果です",
+                "mock": True
+            }
