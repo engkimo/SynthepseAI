@@ -220,10 +220,30 @@ class CoordinatorAgent(MultiAgentBase):
             return False
             
         print(f"タスク '{task_id}' に結果を追加: エージェント={agent_id}")
+        
+        current_status = self.active_tasks[task_id]["status"]
+        print(f"タスク '{task_id}' の現在の状態: {current_status}")
+        
         self.active_tasks[task_id]["results"][agent_id] = {
             "result": result,
             "timestamp": time.time()
         }
+        
+        if agent_id.startswith("reasoning_agent") or "reasoning_agent" in agent_id:
+            print(f"推論エージェント '{agent_id}' からの結果を受け取りました。タスク '{task_id}' を完了としてマークします。")
+            self.update_task_status(task_id, "completed")
+            
+            requester_id = self.active_tasks[task_id].get("requester_id")
+            if requester_id:
+                print(f"タスク '{task_id}' の完了を通知: 要求者={requester_id}")
+                self.send_message(
+                    receiver_id=requester_id,
+                    content=self.get_task_results(task_id),
+                    message_type="task_completed",
+                    metadata={"task_id": task_id}
+                )
+                
+            return True
         
         target_agents = set(self.active_tasks[task_id]["target_agents"])
         result_agents = set(self.active_tasks[task_id]["results"].keys())
@@ -234,6 +254,16 @@ class CoordinatorAgent(MultiAgentBase):
         if target_agents.issubset(result_agents):
             print(f"すべてのターゲットエージェントから結果を受け取りました。タスク '{task_id}' を完了としてマークします。")
             self.update_task_status(task_id, "completed")
+            
+            requester_id = self.active_tasks[task_id].get("requester_id")
+            if requester_id:
+                print(f"タスク '{task_id}' の完了を通知: 要求者={requester_id}")
+                self.send_message(
+                    receiver_id=requester_id,
+                    content=self.get_task_results(task_id),
+                    message_type="task_completed",
+                    metadata={"task_id": task_id}
+                )
             
         return True
     
@@ -265,6 +295,7 @@ class CoordinatorAgent(MultiAgentBase):
         responses = []
         
         print(f"コーディネーターがメッセージを処理: タイプ={message.message_type}, 送信者={message.sender_id}")
+        print(f"メッセージメタデータ: {message.metadata}")
         
         if message.message_type == "register":
             content = message.content
@@ -288,6 +319,7 @@ class CoordinatorAgent(MultiAgentBase):
             
             if task_id:
                 print(f"タスク結果を受信: タスクID={task_id}, 送信者={message.sender_id}")
+                print(f"結果の概要: {str(message.content)[:100]}...")
                 success = self.add_task_result(
                     task_id=task_id,
                     agent_id=message.sender_id,
@@ -764,7 +796,7 @@ class CoordinatorAgent(MultiAgentBase):
             if current_time - info["last_active"] > timeout:
                 self.registered_agents[agent_id]["status"] = "inactive"
                 
-    def check_stuck_tasks(self, force_complete_after_seconds=30):
+    def check_stuck_tasks(self, force_complete_after_seconds=10):
         """
         処理中のままになっているタスクをチェックし、必要に応じて強制的に完了状態に移行
         
@@ -777,10 +809,24 @@ class CoordinatorAgent(MultiAgentBase):
         for task_id, task_info in self.active_tasks.items():
             if task_info["status"] == "processing":
                 time_in_processing = current_time - task_info.get("updated_at", task_info.get("created_at", current_time))
+                target_agents = task_info.get("target_agents", [])
+                
+                if time_in_processing > force_complete_after_seconds / 2:
+                    print(f"注意: タスク '{task_id}' が {time_in_processing:.1f} 秒間処理中のままです。")
+                    print(f"  タイプ: {task_info.get('type')}")
+                    print(f"  ターゲットエージェント: {target_agents}")
+                    print(f"  結果数: {len(task_info.get('results', {}))}")
                 
                 if time_in_processing > force_complete_after_seconds:
                     print(f"警告: タスク '{task_id}' が {time_in_processing:.1f} 秒間処理中のままです。強制的に完了状態に移行します。")
                     stuck_tasks.append(task_id)
+                    
+                    for agent_id in target_agents:
+                        if agent_id in self.registered_agents:
+                            agent_status = self.registered_agents[agent_id]["status"]
+                            last_active = self.registered_agents[agent_id]["last_active"]
+                            inactive_time = current_time - last_active
+                            print(f"  エージェント '{agent_id}' の状態: {agent_status}, 最終アクティブ: {inactive_time:.1f}秒前")
                     
                     if not task_info["results"]:
                         print(f"タスク '{task_id}' には結果がありません。デフォルト結果を生成します。")
@@ -813,11 +859,30 @@ class CoordinatorAgent(MultiAgentBase):
         
         print(f"タスク '{task_id}' (タイプ: {task_type}) のデフォルト結果を生成します")
         
+        created_at = task_info.get("created_at", time.time())
+        updated_at = task_info.get("updated_at", time.time())
+        processing_time = time.time() - created_at
+        target_agents = task_info.get("target_agents", [])
+        
+        steps = []
+        steps.append({"step": "task_creation", "timestamp": created_at, "status": "completed"})
+        steps.append({"step": "task_assignment", "timestamp": created_at, "status": "completed", "agents": target_agents})
+        steps.append({"step": "task_processing", "timestamp": updated_at, "status": "timeout", "duration": processing_time})
+        
         default_result = {
             "success": True,
-            "message": "タスクはタイムアウトにより自動完了しました",
+            "message": f"タスクは {processing_time:.1f} 秒間処理中のままだったため、タイムアウトにより自動完了しました",
             "generated_by": "coordinator_default",
-            "is_fallback": True
+            "is_fallback": True,
+            "processing_time": processing_time,
+            "target_agents": target_agents,
+            "steps": steps,
+            "debug_info": {
+                "created_at": created_at,
+                "updated_at": updated_at,
+                "results_count": len(task_info.get("results", {})),
+                "task_id": task_id
+            }
         }
         
         if task_type == "analyze_task":

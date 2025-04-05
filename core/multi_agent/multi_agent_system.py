@@ -191,17 +191,35 @@ class MultiAgentSystem:
         Returns:
             送信が成功したかどうか
         """
-        if sender_id not in self.agents and sender_id != "system":
-            print(f"警告: 送信者 '{sender_id}' が見つかりません")
-            print(f"利用可能なエージェント: {list(self.agents.keys())}")
-            return False
-            
-        if receiver_id not in self.agents and receiver_id != "broadcast":
-            print(f"警告: 受信者 '{receiver_id}' が見つかりません")
-            print(f"利用可能なエージェント: {list(self.agents.keys())}")
-            return False
-            
         print(f"メッセージを送信: {sender_id} -> {receiver_id}, タイプ={message_type}")
+        
+        if receiver_id == "coordinator" and self.coordinator:
+            print(f"コーディネーターへのメッセージを直接ルーティングします")
+            from .agent_base import AgentMessage
+            message = AgentMessage(
+                sender_id=sender_id,
+                receiver_id=receiver_id,
+                content=content,
+                message_type=message_type,
+                metadata=metadata
+            )
+            result = self.coordinator.receive_message(message)
+            if result:
+                print(f"メッセージがコーディネーターに正常に送信されました")
+            else:
+                print(f"メッセージのコーディネーターへの送信に失敗しました")
+            return result
+            
+        if isinstance(self.agents, dict):
+            if sender_id not in self.agents and sender_id != "system":
+                print(f"警告: 送信者 '{sender_id}' が見つかりません")
+                print(f"利用可能なエージェント: {list(self.agents.keys())}")
+                return False
+                
+            if receiver_id not in self.agents and receiver_id != "broadcast":
+                print(f"警告: 受信者 '{receiver_id}' が見つかりません")
+                print(f"利用可能なエージェント: {list(self.agents.keys())}")
+                return False
         
         if sender_id == "system":
             from .agent_base import AgentMessage
@@ -213,7 +231,11 @@ class MultiAgentSystem:
                 metadata=metadata
             )
         else:
-            sender = self.agents[sender_id]
+            sender = self._get_agent_by_id(sender_id)
+            if not sender:
+                print(f"エラー: 送信者 '{sender_id}' が見つかりません")
+                return False
+                
             message = sender.send_message(
                 receiver_id=receiver_id,
                 content=content,
@@ -223,14 +245,24 @@ class MultiAgentSystem:
         
         if receiver_id == "broadcast":
             success_count = 0
-            for agent_id, agent in self.agents.items():
-                if agent_id != sender_id or sender_id == "system":
-                    if agent.receive_message(message):
-                        success_count += 1
+            if isinstance(self.agents, dict):
+                for agent_id, agent in self.agents.items():
+                    if agent_id != sender_id or sender_id == "system":
+                        if agent.receive_message(message):
+                            success_count += 1
+            elif isinstance(self.agents, list):
+                for agent in self.agents:
+                    if hasattr(agent, 'agent_id') and (agent.agent_id != sender_id or sender_id == "system"):
+                        if agent.receive_message(message):
+                            success_count += 1
             print(f"ブロードキャストメッセージが {success_count} 件のエージェントに送信されました")
             return success_count > 0
         else:
-            receiver = self.agents[receiver_id]
+            receiver = self._get_agent_by_id(receiver_id)
+            if not receiver:
+                print(f"エラー: 受信者 '{receiver_id}' が見つかりません")
+                return False
+                
             result = receiver.receive_message(message)
             if result:
                 print(f"メッセージが '{receiver_id}' に正常に送信されました")
@@ -295,17 +327,27 @@ class MultiAgentSystem:
         total_processed = 0
         results = []
         
+        print(f"メッセージを転送: 送信者={sender_agent_id}, 受信者={message.receiver_id}, タイプ={message.message_type}")
+        
+        if message.receiver_id == "coordinator" and self.coordinator:
+            print(f"コーディネーターへのメッセージを直接転送します")
+            self.coordinator.receive_message(message)
+            total_processed += 1
+            return [message]
+        
         if message.receiver_id == "broadcast":
             print(f"ブロードキャストメッセージを送信: タイプ={message.message_type}")
             
             if isinstance(self.agents, dict):
                 for other_id, other_agent in self.agents.items():
                     if other_id != sender_agent_id:
+                        print(f"  ブロードキャストメッセージを '{other_id}' に送信")
                         other_agent.receive_message(message)
                         total_processed += 1
             elif isinstance(self.agents, list):
                 for other_agent in self.agents:
                     if hasattr(other_agent, 'agent_id') and other_agent.agent_id != sender_agent_id:
+                        print(f"  ブロードキャストメッセージを '{other_agent.agent_id}' に送信")
                         other_agent.receive_message(message)
                         total_processed += 1
         else:
@@ -316,6 +358,7 @@ class MultiAgentSystem:
                 total_processed += 1
             else:
                 print(f"警告: 受信者 '{message.receiver_id}' が見つかりません。メッセージは破棄されます。")
+                print(f"利用可能なエージェント: {list(self.agents.keys()) if isinstance(self.agents, dict) else [a.agent_id for a in self.agents if hasattr(a, 'agent_id')]}")
         
         if total_processed > 0:
             print(f"合計 {total_processed} 件のメッセージが処理されました")
@@ -475,19 +518,30 @@ class MultiAgentSystem:
                 break
                 
             task_status = self.coordinator.active_tasks[task_id]['status']
+            print(f"タスク '{task_id}' の現在の状態: {task_status}")
             
             current_time = time.time()
             status_wait_time = current_time - last_status_change_time
             
             if current_time - last_stuck_check_time > stuck_check_interval:
                 print(f"スタックしたタスクをチェックします...")
-                stuck_tasks = self.coordinator.check_stuck_tasks(force_complete_after_seconds=15)
+                stuck_tasks = self.coordinator.check_stuck_tasks(force_complete_after_seconds=10)
                 if stuck_tasks:
                     print(f"{len(stuck_tasks)}個のスタックしたタスクを検出し、処理しました: {stuck_tasks}")
                     if task_id in stuck_tasks:
                         print(f"現在のタスク '{task_id}' がスタックしていたため、強制的に完了状態に移行しました")
                         task_status = "completed"
+                        last_status_change_time = current_time
                 last_stuck_check_time = current_time
+                
+                for agent_id, agent in self.agents.items():
+                    if hasattr(agent, 'active_tasks') and task_id in getattr(agent, 'active_tasks', {}):
+                        agent_task_status = agent.active_tasks[task_id].get('status', 'unknown')
+                        if agent_task_status == "completed" and task_status == "processing":
+                            print(f"エージェント '{agent_id}' のタスク '{task_id}' は完了していますが、コーディネーターでは処理中です。同期します。")
+                            agent_result = agent.active_tasks[task_id].get('result', {})
+                            self.coordinator.add_task_result(task_id, agent_id, agent_result)
+                            print(f"エージェント '{agent_id}' の結果をコーディネーターに同期しました")
             
             if task_status == "processing":
                 if iterations % 10 == 0 or status_wait_time > 1.0:
@@ -512,9 +566,22 @@ class MultiAgentSystem:
                             if agent_id == "reasoning_agent" and hasattr(agent, 'active_tasks'):
                                 print(f"  アクティブタスク: {list(agent.active_tasks.keys())}")
                                 if task_id in agent.active_tasks:
-                                    print(f"  タスク '{task_id}' の処理状態: {agent.active_tasks[task_id].get('status', 'unknown')}")
+                                    agent_task_status = agent.active_tasks[task_id].get('status', 'unknown')
+                                    print(f"  タスク '{task_id}' の処理状態: {agent_task_status}")
                                     print(f"  処理開始時刻: {agent.active_tasks[task_id].get('start_time', 'unknown')}")
                                     print(f"  経過時間: {time.time() - agent.active_tasks[task_id].get('start_time', time.time()):.1f}秒")
+                                    
+                                    if agent_task_status == "completed" and task_status == "processing":
+                                        print(f"状態の不一致を検出: エージェント内では完了しているがコーディネーターでは処理中のままです。強制的に同期します。")
+                                        
+                                        agent_result = agent.active_tasks[task_id].get('result', {})
+                                        
+                                        self.coordinator.add_task_result(task_id, agent_id, agent_result)
+                                        print(f"エージェント '{agent_id}' の結果をコーディネーターに強制的に同期しました")
+                                        
+                                        self.coordinator.update_task_status(task_id, "completed")
+                                        task_status = "completed"
+                                        last_status_change_time = current_time
                             
                             if hasattr(agent, 'task_processing_errors') and task_id in getattr(agent, 'task_processing_errors', {}):
                                 print(f"  タスク処理エラー:")

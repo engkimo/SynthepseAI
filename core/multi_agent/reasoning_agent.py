@@ -193,6 +193,8 @@ class ReasoningAgent(MultiAgentBase):
         """
         responses = []
         
+        print(f"推論エージェント: メッセージを処理します: タイプ={message.message_type}, 送信者={message.sender_id}")
+        
         if message.message_type == "task":
             metadata = message.metadata or {}
             task_id = metadata.get("task_id")
@@ -313,14 +315,23 @@ class ReasoningAgent(MultiAgentBase):
                         "processing_time": processing_time
                     })
                     
+                    coordinator_response = self.send_message(
+                        receiver_id="coordinator",
+                        content=mock_result,
+                        message_type="task_result",
+                        metadata={"task_id": task_id, "agent_id": self.agent_id}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' のモック結果をコーディネーターに直接送信しました (処理時間: {processing_time:.1f}秒)")
+                    
                     response = self.send_message(
                         receiver_id=message.sender_id,
                         content=mock_result,
                         message_type="task_result",
                         metadata={"task_id": task_id}
                     )
-                    print(f"推論エージェント: タスク '{task_id}' のモック結果を送信しました (処理時間: {processing_time:.1f}秒)")
+                    print(f"推論エージェント: タスク '{task_id}' のモック結果を要求者 '{message.sender_id}' に送信しました (処理時間: {processing_time:.1f}秒)")
                     responses.append(response)
+                    responses.append(coordinator_response)
                     return responses
                 
                 if task_type == "reasoning_chain":
@@ -387,7 +398,8 @@ class ReasoningAgent(MultiAgentBase):
                     message_type="task_result",
                     metadata={"task_id": task_id}
                 )
-                print(f"推論エージェント: タスク '{task_id}' の結果を送信しました")
+                print(f"推論エージェント: タスク '{task_id}' の結果を送信しました: 受信者={message.sender_id}")
+                print(f"推論エージェント: 結果の概要: {str(result)[:100]}...")
                 responses.append(response)
                 
             except Exception as e:
@@ -424,14 +436,23 @@ class ReasoningAgent(MultiAgentBase):
                     "error": error_message
                 })
                 
+                coordinator_response = self.send_message(
+                    receiver_id="coordinator",
+                    content=error_response,
+                    message_type="task_result",
+                    metadata={"task_id": task_id, "agent_id": self.agent_id, "status": "error"}
+                )
+                print(f"推論エージェント: タスク '{task_id}' のエラー応答をコーディネーターに直接送信しました")
+                
                 response = self.send_message(
                     receiver_id=message.sender_id,
                     content=error_response,
                     message_type="task_result",
-                    metadata={"task_id": task_id}
+                    metadata={"task_id": task_id, "status": "error"}
                 )
-                print(f"推論エージェント: タスク '{task_id}' のエラー応答を送信しました")
+                print(f"推論エージェント: タスク '{task_id}' のエラー応答を要求者 '{message.sender_id}' に送信しました")
                 responses.append(response)
+                responses.append(coordinator_response)
         
         return responses
     
