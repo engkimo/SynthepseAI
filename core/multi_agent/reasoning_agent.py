@@ -704,10 +704,6 @@ class ReasoningAgent(MultiAgentBase):
                 "message": f"未知のタスクタイプ '{task_type}' に対するモック結果です",
                 "debug_info": debug_info
             }
-            
-        elif task_type == "fix_code":
-            code = content.get("code", "")
-            error_message = content.get("error_message", "")
             return {
                 "fixed_code": f"# モックで修正されたコード\n# 元のエラー: {error_message}\n\n{code}\n# このコードはモックモードで修正されました",
                 "reasoning_chain": [
