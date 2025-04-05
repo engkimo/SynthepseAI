@@ -87,7 +87,8 @@ class LLLMMultiAgentFlow(BaseFlow):
         """マルチエージェントシステムの初期化"""
         agent_config = {
             "workspace_dir": self.workspace_dir,
-            "use_web_tools": "tavily_api_key" in self.config or "firecrawl_api_key" in self.config
+            "use_web_tools": "tavily_api_key" in self.config or "firecrawl_api_key" in self.config,
+            "mock_mode": self.config.get("mock_mode", False)
         }
         
         multi_agent_system = MultiAgentSystem(
