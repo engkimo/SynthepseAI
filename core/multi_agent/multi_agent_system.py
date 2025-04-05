@@ -236,7 +236,7 @@ class MultiAgentSystem:
         
         return results
     
-    def create_task(self, task_type: str, content: Any, target_agents: Optional[List[str]] = None) -> str:
+    def create_task(self, task_type: str, content: Any, target_agents: Optional[List[str]] = None, requester_id: Optional[str] = None) -> str:
         """
         タスクを作成
         
@@ -244,6 +244,7 @@ class MultiAgentSystem:
             task_type: タスクのタイプ
             content: タスクの内容
             target_agents: ターゲットエージェントのリスト（指定しない場合は適切なエージェントを自動選択）
+            requester_id: タスクを要求したエージェントのID
             
         Returns:
             作成されたタスクのID
@@ -251,7 +252,10 @@ class MultiAgentSystem:
         if self.coordinator is None:
             raise ValueError("調整エージェントが初期化されていません")
             
-        return self.coordinator.create_task(task_type, content, target_agents)
+        if requester_id is None:
+            requester_id = "system"
+            
+        return self.coordinator.create_task(task_type, content, target_agents, requester_id)
     
     def get_task_results(self, task_id: str) -> Dict[str, Any]:
         """

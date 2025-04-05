@@ -96,7 +96,7 @@ class CoordinatorAgent(MultiAgentBase):
             if info["role"] == role and info["status"] == "active"
         ]
     
-    def create_task(self, task_type: str, content: Any, target_agents: Optional[List[str]] = None) -> str:
+    def create_task(self, task_type: str, content: Any, target_agents: Optional[List[str]] = None, requester_id: Optional[str] = None) -> str:
         """
         新しいタスクを作成
         
@@ -104,6 +104,7 @@ class CoordinatorAgent(MultiAgentBase):
             task_type: タスクのタイプ
             content: タスクの内容
             target_agents: ターゲットエージェントのリスト（指定しない場合は適切なエージェントを自動選択）
+            requester_id: タスクを要求したエージェントのID
             
         Returns:
             作成されたタスクのID
@@ -121,6 +122,8 @@ class CoordinatorAgent(MultiAgentBase):
                 target_role = AgentRole.DOMAIN_EXPERT
             elif task_type == "tool_execution":
                 target_role = AgentRole.TOOL_EXECUTOR
+            elif task_type == "generate_plan":
+                target_role = AgentRole.COORDINATOR
             else:
                 target_role = AgentRole.MAIN_REASONING
                 
@@ -133,7 +136,8 @@ class CoordinatorAgent(MultiAgentBase):
             "status": "created",
             "created_at": time.time(),
             "updated_at": time.time(),
-            "results": {}
+            "results": {},
+            "requester_id": requester_id
         }
         
         for agent_id in target_agents:
@@ -261,12 +265,134 @@ class CoordinatorAgent(MultiAgentBase):
                         )
                         responses.append(notification)
         
+        elif message.message_type == "task":
+            metadata = message.metadata or {}
+            task_id = metadata.get("task_id")
+            task_type = metadata.get("task_type")
+            
+            if task_id and task_type == "generate_plan":
+                plan_result = self._handle_generate_plan_task(message.content)
+                
+                self.add_task_result(
+                    task_id=task_id,
+                    agent_id=self.agent_id,
+                    result=plan_result
+                )
+                
+                if task_id in self.active_tasks:
+                    requester_id = self.active_tasks[task_id].get("requester_id")
+                    if requester_id:
+                        notification = self.send_message(
+                            receiver_id=requester_id,
+                            content=plan_result,
+                            message_type="task_completed",
+                            metadata={"task_id": task_id}
+                        )
+                        responses.append(notification)
+        
         elif message.message_type == "heartbeat":
             if message.sender_id in self.registered_agents:
                 self.registered_agents[message.sender_id]["last_active"] = time.time()
                 self.registered_agents[message.sender_id]["status"] = "active"
         
         return responses
+        
+    def _handle_generate_plan_task(self, content: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        計画生成タスクを処理
+        
+        Args:
+            content: タスク内容
+            
+        Returns:
+            計画生成結果
+        """
+        goal = content.get("goal", "")
+        max_tasks = content.get("max_tasks", 5)
+        
+        if not goal:
+            return {
+                "success": False,
+                "error": "目標が指定されていません"
+            }
+            
+        try:
+            plan_id = f"plan_{int(time.time())}"
+            
+            if self.llm:
+                plan_prompt = f"""
+                目標: {goal}
+                
+                この目標を達成するための計画を作成してください。
+                計画は最大{max_tasks}個のタスクに分割し、各タスクには以下の情報を含めてください:
+                
+                1. タスクの説明
+                2. 依存関係（他のタスクIDがある場合）
+                
+                JSON形式で出力してください。
+                """
+                
+                plan_response = self.llm.generate(plan_prompt)
+                
+                try:
+                    import re
+                    json_match = re.search(r'```json\n(.*?)\n```', plan_response, re.DOTALL)
+                    
+                    if json_match:
+                        json_str = json_match.group(1)
+                    else:
+                        json_str = plan_response
+                        
+                    plan_data = json.loads(json_str)
+                    
+                    tasks = []
+                    for i, task in enumerate(plan_data.get("tasks", [])):
+                        task_id = f"task_{i+1}"
+                        tasks.append({
+                            "id": task_id,
+                            "description": task.get("description", ""),
+                            "dependencies": task.get("dependencies", [])
+                        })
+                    
+                    return {
+                        "success": True,
+                        "plan_id": plan_id,
+                        "tasks": tasks
+                    }
+                    
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": f"計画データの解析に失敗しました: {str(e)}"
+                    }
+            else:
+                return {
+                    "success": True,
+                    "plan_id": plan_id,
+                    "tasks": [
+                        {
+                            "id": "task_1",
+                            "description": f"{goal}に関する情報を収集する",
+                            "dependencies": []
+                        },
+                        {
+                            "id": "task_2",
+                            "description": f"収集した情報を分析する",
+                            "dependencies": ["task_1"]
+                        },
+                        {
+                            "id": "task_3",
+                            "description": f"分析結果をまとめる",
+                            "dependencies": ["task_2"]
+                        }
+                    ]
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"計画生成中にエラーが発生しました: {str(e)}"
+            }
     
     def broadcast_message(self, content: Any, message_type: str = "broadcast", metadata: Optional[Dict[str, Any]] = None) -> List[AgentMessage]:
         """
