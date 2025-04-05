@@ -272,7 +272,7 @@ class MultiAgentSystem:
             
         return self.coordinator.get_task_results(task_id)
     
-    def run_until_completion(self, task_id: str, max_iterations: int = 10, timeout: float = 30.0) -> Dict[str, Any]:
+    def run_until_completion(self, task_id: str, max_iterations: int = 300, timeout: float = 30.0) -> Dict[str, Any]:
         """
         タスクが完了するまで実行
         
@@ -290,17 +290,49 @@ class MultiAgentSystem:
         start_time = time.time()
         iterations = 0
         
+        print(f"タスク '{task_id}' の完了を待機中... (タイムアウト: {timeout}秒, 最大反復: {max_iterations})")
+        
         while iterations < max_iterations and time.time() - start_time < timeout:
             self.process_messages()
             
             task_status = self.coordinator.active_tasks.get(task_id, {}).get("status")
             
+            if iterations % 10 == 0 or task_status != "created":
+                elapsed = time.time() - start_time
+                print(f"タスク '{task_id}' の状態: {task_status} ({elapsed:.1f}秒経過, {iterations}回目の確認)")
+            
             if task_status == "completed":
+                print(f"タスク '{task_id}' が完了しました。結果を取得します。")
                 return self.get_task_results(task_id)
                 
             iterations += 1
             time.sleep(0.1)  # 短い待機時間
             
+        elapsed = time.time() - start_time
+        print(f"タスク '{task_id}' がタイムアウトしました。({elapsed:.1f}秒経過, {iterations}回の確認)")
+        
+        if self.coordinator and hasattr(self.coordinator, 'active_tasks'):
+            task_info = self.coordinator.active_tasks.get(task_id, {})
+            if task_info:
+                print(f"タスク情報:")
+                print(f"  タイプ: {task_info.get('type')}")
+                print(f"  ステータス: {task_info.get('status')}")
+                print(f"  作成時刻: {task_info.get('created_at')}")
+                print(f"  更新時刻: {task_info.get('updated_at')}")
+                print(f"  ターゲットエージェント: {task_info.get('target_agents')}")
+                print(f"  結果数: {len(task_info.get('results', {}))}")
+                
+                target_agents = task_info.get("target_agents", [])
+                for agent_id in target_agents:
+                    print(f"エージェント '{agent_id}' の状態を確認中...")
+                    agent = next((a for a in self.agents if a.agent_id == agent_id), None)
+                    if agent:
+                        print(f"  エージェント '{agent_id}' が見つかりました")
+                    else:
+                        print(f"  エージェント '{agent_id}' が見つかりません")
+            else:
+                print(f"タスク '{task_id}' の情報が見つかりません")
+        
         return {"error": "タスクが完了しませんでした", "task_id": task_id}
         
     def wait_for_task_result(self, task_id: str, timeout: float = 30.0) -> Dict[str, Any]:
@@ -314,14 +346,31 @@ class MultiAgentSystem:
         Returns:
             タスク結果
         """
+        print(f"タスク '{task_id}' の結果を待機中... (タイムアウト: {timeout}秒)")
+        
         result = self.run_until_completion(task_id, max_iterations=int(timeout * 10), timeout=timeout)
         
         if "error" in result:
+            print(f"タスク '{task_id}' の実行に失敗しました: {result['error']}")
+            
+            if self.coordinator and hasattr(self.coordinator, 'active_tasks'):
+                task_info = self.coordinator.active_tasks.get(task_id, {})
+                if task_info:
+                    task_status = task_info.get("status", "不明")
+                    print(f"タスクステータス: {task_status}")
+                    
+                    results = task_info.get("results", {})
+                    if results:
+                        print(f"部分的な結果が {len(results)} 件あります")
+                        for agent_id, result_data in results.items():
+                            print(f"  エージェント '{agent_id}' からの結果: {result_data.get('timestamp')}")
+            
             return {
                 "success": False,
                 "error": result["error"]
             }
             
+        print(f"タスク '{task_id}' が正常に完了しました")
         return {
             "success": True,
             "result": result

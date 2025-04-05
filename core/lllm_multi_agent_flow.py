@@ -139,42 +139,61 @@ class LLLMMultiAgentFlow(BaseFlow):
             計画生成結果
         """
         try:
+            print(f"計画生成を開始: '{goal}'")
+            
             plan_task = {
                 "type": "generate_plan",
                 "goal": goal,
                 "max_tasks": 10
             }
             
+            print("コーディネーターエージェントにタスクを割り当て中...")
+            
             task_id = self.multi_agent_system.create_task(
                 task_type="generate_plan",
                 content=plan_task,
-                target_agents=["coordinator_agent"]
+                target_agents=["coordinator"],
+                requester_id="system"
             )
             
-            result = self.multi_agent_system.wait_for_task_result(task_id, timeout=60)
+            print(f"タスクID '{task_id}' が作成されました。結果を待機中...")
+            
+            result = self.multi_agent_system.wait_for_task_result(task_id, timeout=180)
             
             if not result["success"]:
+                error_msg = result.get("error", "計画生成中にエラーが発生しました")
+                print(f"計画生成エラー: {error_msg}")
                 return {
                     "success": False,
-                    "error": result.get("error", "計画生成中にエラーが発生しました")
+                    "error": error_msg
                 }
             
-            plan_id = result["result"]["plan_id"]
+            print("計画生成が成功しました。タスクをデータベースに追加中...")
             
-            for i, task_info in enumerate(result["result"]["tasks"]):
+            plan_id = result["result"]["plan_id"]
+            tasks = result["result"].get("tasks", [])
+            
+            for i, task_info in enumerate(tasks):
                 self.task_db.add_task(
                     plan_id=plan_id,
                     description=task_info["description"],
                     dependencies=task_info.get("dependencies", [])
                 )
             
+            print(f"計画 '{plan_id}' が作成されました。タスク数: {len(tasks)}")
+            
             return {
                 "success": True,
                 "plan_id": plan_id,
-                "task_count": len(result["result"]["tasks"])
+                "task_count": len(tasks)
             }
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"計画生成中に例外が発生しました: {str(e)}")
+            print(f"詳細なエラー情報: {error_details}")
+            
             return {
                 "success": False,
                 "error": f"計画生成エラー: {str(e)}"
