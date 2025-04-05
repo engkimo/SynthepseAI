@@ -391,7 +391,7 @@ class LLLMMultiAgentFlow(BaseFlow):
         elif task_type in ["analysis", "evaluation", "assessment"]:
             return "evaluation_agent"
         
-        return "coordinator_agent"
+        return "coordinator"
     
     def _repair_failed_task(self, task_id: str) -> Dict[str, Any]:
         """
@@ -503,7 +503,7 @@ class LLLMMultiAgentFlow(BaseFlow):
         task_id = self.multi_agent_system.create_task(
             task_type="generate_summary",
             content=summary_task,
-            target_agents=["coordinator_agent"]
+            target_agents=["coordinator"]
         )
         
         result = self.multi_agent_system.wait_for_task_result(task_id, timeout=30)

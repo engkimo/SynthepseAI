@@ -270,9 +270,15 @@ class CoordinatorAgent(MultiAgentBase):
             task_id = metadata.get("task_id")
             task_type = metadata.get("task_type")
             
+            if task_id and task_id in self.active_tasks:
+                print(f"コーディネーターがタスク '{task_id}' を処理中... タイプ: {task_type}")
+                self.update_task_status(task_id, "processing")
+            
             if task_id and task_type == "generate_plan":
+                print(f"計画生成タスク '{task_id}' の処理を開始")
                 plan_result = self._handle_generate_plan_task(message.content)
                 
+                print(f"計画生成タスク '{task_id}' の結果を追加")
                 self.add_task_result(
                     task_id=task_id,
                     agent_id=self.agent_id,
@@ -282,6 +288,7 @@ class CoordinatorAgent(MultiAgentBase):
                 if task_id in self.active_tasks:
                     requester_id = self.active_tasks[task_id].get("requester_id")
                     if requester_id:
+                        print(f"計画生成タスク '{task_id}' の完了を通知: {requester_id}")
                         notification = self.send_message(
                             receiver_id=requester_id,
                             content=plan_result,
