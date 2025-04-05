@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--workspace', type=str, default='./workspace', help='The workspace directory for file operations')
     parser.add_argument('--config', type=str, default='./config.json', help='Configuration file path')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument('--mock', action='store_true', help='Run in mock mode without API calls')
     
     args = parser.parse_args()
     
@@ -34,11 +35,19 @@ def main():
         with open(args.config, 'r') as f:
             config = json.load(f)
     
+    openai_api_key = config.get('openai_api_key')
+    mock_mode = args.mock
+    
+    if not openai_api_key and not mock_mode:
+        print("警告: OpenAI APIキーが設定されていません。モックモードで実行します。")
+        mock_mode = True
+    
     # Initialize components
     llm = LLM(
-        api_key=config.get('openai_api_key'),
+        api_key=openai_api_key,
         model=config.get('model', 'gpt-4-turbo'),
-        temperature=config.get('temperature', 0.7)
+        temperature=config.get('temperature', 0.7),
+        mock_mode=mock_mode
     )
     
     # ワークスペースディレクトリを作成
@@ -110,7 +119,8 @@ def main():
             "tavily_api_key": config.get("tavily_api_key"),
             "firecrawl_api_key": config.get("firecrawl_api_key"),
             "rgcn_hidden_dim": config.get("rgcn_hidden_dim", 64),
-            "use_compatibility_mode": config.get("use_compatibility_mode", True)
+            "use_compatibility_mode": config.get("use_compatibility_mode", True),
+            "mock_mode": mock_mode
         }
     )
     
