@@ -219,26 +219,41 @@ class ReasoningAgent(MultiAgentBase):
             metadata = message.metadata or {}
             task_id = metadata.get("task_id")
             task_type = metadata.get("task_type")
+            is_retry = metadata.get("retry", False)
+            retry_count = metadata.get("retry_count", 0)
             
-            print(f"推論エージェント: タスク '{task_id}' (タイプ: {task_type}) の処理を開始します")
+            if is_retry:
+                print(f"推論エージェント: タスク '{task_id}' (タイプ: {task_type}) の再処理を開始します (再試行回数: {retry_count})")
+            else:
+                print(f"推論エージェント: タスク '{task_id}' (タイプ: {task_type}) の処理を開始します")
             
-            self.active_tasks[task_id] = {
-                "type": task_type,
-                "content": message.content,
-                "start_time": time.time(),
-                "sender_id": message.sender_id,
-                "status": "processing"
-            }
-            
-            try:
-                if self.mock_mode:
-                    print(f"推論エージェント: モックモードでタスク '{task_id}' を処理します")
+            if task_id in self.active_tasks:
+                current_status = self.active_tasks[task_id].get("status")
+                start_time = self.active_tasks[task_id].get("start_time", time.time())
+                elapsed = time.time() - start_time
+                
+                print(f"推論エージェント: タスク '{task_id}' は既に処理中です (状態: {current_status}, 経過時間: {elapsed:.1f}秒)")
+                
+                if current_status == "completed" and "result" in self.active_tasks[task_id]:
+                    print(f"推論エージェント: タスク '{task_id}' は既に完了しています。結果を再送信します。")
+                    result = self.active_tasks[task_id]["result"]
                     
-                    processing_time = 0.5  # 0.5秒の処理時間
-                    print(f"推論エージェント: モック処理時間 {processing_time}秒をシミュレート")
-                    time.sleep(processing_time)
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=result,
+                        message_type="task_result",
+                        metadata={"task_id": task_id, "resent": True}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' の結果を再送信しました")
+                    responses.append(response)
+                    return responses
+                
+                if current_status == "processing" and elapsed > 10.0:
+                    print(f"推論エージェント: タスク '{task_id}' は10秒以上処理中のままです。強制的に完了させます。")
                     
                     mock_result = self._generate_mock_result(task_type, message.content)
+                    mock_result["forced_completion"] = True
+                    mock_result["processing_time"] = elapsed
                     
                     self.active_tasks[task_id]["status"] = "completed"
                     self.active_tasks[task_id]["end_time"] = time.time()
@@ -249,7 +264,66 @@ class ReasoningAgent(MultiAgentBase):
                         "task_type": task_type,
                         "timestamp": time.time(),
                         "result": mock_result,
-                        "is_mock": True
+                        "forced_completion": True
+                    })
+                    
+                    response = self.send_message(
+                        receiver_id=message.sender_id,
+                        content=mock_result,
+                        message_type="task_result",
+                        metadata={"task_id": task_id, "forced_completion": True}
+                    )
+                    print(f"推論エージェント: タスク '{task_id}' の強制完了結果を送信しました")
+                    responses.append(response)
+                    return responses
+            
+            self.active_tasks[task_id] = {
+                "type": task_type,
+                "content": message.content,
+                "start_time": time.time(),
+                "sender_id": message.sender_id,
+                "status": "processing",
+                "step": "initialized",
+                "is_retry": is_retry,
+                "retry_count": retry_count
+            }
+            
+            def update_step(step_name):
+                if task_id in self.active_tasks:
+                    self.active_tasks[task_id]["step"] = step_name
+                    self.active_tasks[task_id]["last_update"] = time.time()
+                    print(f"推論エージェント: タスク '{task_id}' の処理ステップを '{step_name}' に更新しました")
+            
+            try:
+                update_step("starting")
+                
+                if self.mock_mode:
+                    print(f"推論エージェント: モックモードでタスク '{task_id}' を処理します")
+                    
+                    processing_time = 0.5 + (hash(task_id) % 5) * 0.1  # 0.5〜0.9秒のランダムな処理時間
+                    print(f"推論エージェント: モック処理時間 {processing_time:.1f}秒をシミュレート")
+                    
+                    update_step("processing")
+                    time.sleep(processing_time * 0.5)
+                    
+                    update_step("finalizing")
+                    time.sleep(processing_time * 0.5)
+                    
+                    mock_result = self._generate_mock_result(task_type, message.content)
+                    mock_result["processing_time"] = processing_time
+                    mock_result["task_id"] = task_id
+                    
+                    self.active_tasks[task_id]["status"] = "completed"
+                    self.active_tasks[task_id]["end_time"] = time.time()
+                    self.active_tasks[task_id]["result"] = mock_result
+                    
+                    self.reasoning_history.append({
+                        "task_id": task_id,
+                        "task_type": task_type,
+                        "timestamp": time.time(),
+                        "result": mock_result,
+                        "is_mock": True,
+                        "processing_time": processing_time
                     })
                     
                     response = self.send_message(
@@ -258,7 +332,7 @@ class ReasoningAgent(MultiAgentBase):
                         message_type="task_result",
                         metadata={"task_id": task_id}
                     )
-                    print(f"推論エージェント: タスク '{task_id}' のモック結果を送信しました")
+                    print(f"推論エージェント: タスク '{task_id}' のモック結果を送信しました (処理時間: {processing_time:.1f}秒)")
                     responses.append(response)
                     return responses
                 
@@ -549,16 +623,86 @@ class ReasoningAgent(MultiAgentBase):
         """
         print(f"モック結果を生成: タスクタイプ={task_type}")
         
+        debug_info = {
+            "mock": True,
+            "generated_at": time.time(),
+            "task_type": task_type,
+            "content_keys": list(content.keys()) if isinstance(content, dict) else "not_a_dict"
+        }
+        
         if task_type == "reasoning_chain":
             task_description = content.get("task_description", "")
-            return {
+            result = {
                 "chain": [
                     {"thought": f"タスク '{task_description[:30]}...' について考えています", "action": "情報を分析する"},
                     {"thought": "関連する概念を整理します", "action": "概念を構造化する"},
                     {"thought": "解決策を検討します", "action": "最適な解決策を選択する"}
                 ],
                 "solution": f"タスク '{task_description[:30]}...' に対するモック解決策です。これは実際のAPIコールなしで生成されています。",
-                "mock": True
+                "debug_info": debug_info
+            }
+            return result
+            
+        elif task_type == "fix_code":
+            code = content.get("code", "")
+            error_message = content.get("error_message", "")
+            result = {
+                "fixed_code": f"# モックで修正されたコード\n# 元のエラー: {error_message}\n\n{code}\n# このコードはモックモードで修正されました",
+                "reasoning_chain": [
+                    {"thought": f"エラー '{error_message[:30]}...' を分析しています", "action": "エラーの原因を特定する"},
+                    {"thought": "コードの問題箇所を特定しました", "action": "コードを修正する"}
+                ],
+                "debug_info": debug_info
+            }
+            return result
+            
+        elif task_type == "analyze_problem":
+            problem_description = content.get("problem_description", "")
+            result = {
+                "understanding": f"問題 '{problem_description[:30]}...' の理解（モック）",
+                "challenges": "モックで生成された課題リスト",
+                "solution": "モックで生成された解決策",
+                "next_steps": "モックで生成された次のステップ",
+                "debug_info": debug_info
+            }
+            return result
+            
+        elif task_type == "analyze_task":
+            description = content.get("description", "")
+            task_type_guess = "web_search"
+            
+            if "コード" in description or "プログラム" in description:
+                task_type_guess = "code_generation"
+            elif "分析" in description or "評価" in description:
+                task_type_guess = "analysis"
+                
+            result = {
+                "task_type": task_type_guess,
+                "complexity": "medium",
+                "required_tools": ["web_crawler"] if task_type_guess == "web_search" else ["python_execute"],
+                "debug_info": debug_info
+            }
+            return result
+            
+        elif task_type == "generate_plan":
+            goal = content.get("goal", "")
+            result = {
+                "title": f"'{goal[:30]}...' のためのモック計画",
+                "description": "これはモックモードで生成された計画です。実際のAPIコールは行われていません。",
+                "steps": [
+                    {"id": 1, "name": "情報収集", "description": "関連情報を収集します"},
+                    {"id": 2, "name": "分析", "description": "収集した情報を分析します"},
+                    {"id": 3, "name": "実装", "description": "分析結果に基づいて実装します"},
+                    {"id": 4, "name": "評価", "description": "実装結果を評価します"}
+                ],
+                "debug_info": debug_info
+            }
+            return result
+            
+        else:
+            return {
+                "message": f"未知のタスクタイプ '{task_type}' に対するモック結果です",
+                "debug_info": debug_info
             }
             
         elif task_type == "fix_code":

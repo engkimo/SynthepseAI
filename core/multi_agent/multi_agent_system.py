@@ -489,32 +489,86 @@ class MultiAgentSystem:
                         task_status = "completed"
                 last_stuck_check_time = current_time
             
-            if task_status == "processing" and (iterations > 30 and iterations % 30 == 0 or status_wait_time > 10):
-                print(f"タスク '{task_id}' は処理中のままです（{status_wait_time:.1f}秒経過）。結果を確認します...")
+            if task_status == "processing":
+                if iterations % 10 == 0 or status_wait_time > 1.0:
+                    print(f"タスク '{task_id}' は処理中のままです（{status_wait_time:.1f}秒経過）。結果を確認します...")
+                    
+                    task_info = self.coordinator.active_tasks[task_id]
+                    target_agents = task_info.get("target_agents", [])
+                    
+                    print(f"タスク詳細:")
+                    print(f"  タイプ: {task_info.get('type')}")
+                    print(f"  作成時刻: {task_info.get('created_at')}")
+                    print(f"  更新時刻: {task_info.get('updated_at')}")
+                    print(f"  ターゲットエージェント: {target_agents}")
+                    print(f"  結果数: {len(task_info.get('results', {}))}")
+                    
+                    for agent_id in target_agents:
+                        agent = self._get_agent_by_id(agent_id)
+                        if agent:
+                            print(f"エージェント '{agent_id}' の状態:")
+                            print(f"  メッセージキュー長: {len(agent.message_queue)}")
+                            
+                            if agent_id == "reasoning_agent" and hasattr(agent, 'active_tasks'):
+                                print(f"  アクティブタスク: {list(agent.active_tasks.keys())}")
+                                if task_id in agent.active_tasks:
+                                    print(f"  タスク '{task_id}' の処理状態: {agent.active_tasks[task_id].get('status', 'unknown')}")
+                                    print(f"  処理開始時刻: {agent.active_tasks[task_id].get('start_time', 'unknown')}")
+                                    print(f"  経過時間: {time.time() - agent.active_tasks[task_id].get('start_time', time.time()):.1f}秒")
+                            
+                            if hasattr(agent, 'task_processing_errors') and task_id in getattr(agent, 'task_processing_errors', {}):
+                                print(f"  タスク処理エラー:")
+                                error_info = agent.task_processing_errors[task_id]
+                                print(f"    エラー: {error_info.get('error', 'unknown')}")
+                                print(f"    タイムスタンプ: {error_info.get('timestamp', 'unknown')}")
+                                if 'stack_trace' in error_info:
+                                    print(f"    スタックトレース: {error_info['stack_trace'][:200]}...")
+                
                 results = self.coordinator.get_task_results(task_id)
                 if results:
                     print(f"タスク '{task_id}' に結果がありますが、完了マークがされていません。強制的に完了にします。")
+                    print(f"結果: {results}")
                     self.coordinator.update_task_status(task_id, "completed")
                     task_status = "completed"
                     last_status_change_time = current_time
-                elif status_wait_time > 20:  # 20秒以上処理中のままの場合
-                    print(f"タスク '{task_id}' は長時間処理中のままです。タスクの状態を確認します...")
+                
+                elif status_wait_time > 10:  # 10秒以上処理中のままの場合
+                    print(f"タスク '{task_id}' は10秒以上処理中のままです。タスクの状態を詳細に確認します...")
                     task_info = self.coordinator.active_tasks[task_id]
                     target_agents = task_info.get("target_agents", [])
                     
                     for agent_id in target_agents:
                         agent = self._get_agent_by_id(agent_id)
                         if agent:
-                            print(f"エージェント '{agent_id}' のメッセージキュー: {len(agent.message_queue)}件")
+                            print(f"エージェント '{agent_id}' の詳細状態:")
+                            print(f"  メッセージキュー: {len(agent.message_queue)}件")
                             
-                            if hasattr(agent, 'task_processing_errors') and task_id in getattr(agent, 'task_processing_errors', {}):
-                                print(f"  エージェント '{agent_id}' のタスク処理エラー:")
-                                print(f"    {agent.task_processing_errors[task_id]}")
+                            if hasattr(agent, 'message_queue') and len(agent.message_queue) > 0:
+                                print(f"  メッセージキュー内容:")
+                                for i, msg in enumerate(agent.message_queue[:3]):  # 最初の3件のみ表示
+                                    print(f"    メッセージ {i+1}: タイプ={msg.message_type}, 送信者={msg.sender_id}")
+                            
+                            if agent_id == "reasoning_agent":
+                                if hasattr(agent, 'active_tasks'):
+                                    print(f"  推論エージェントのアクティブタスク: {list(agent.active_tasks.keys())}")
+                                    if task_id in agent.active_tasks:
+                                        task_state = agent.active_tasks[task_id]
+                                        print(f"  タスク '{task_id}' の詳細:")
+                                        print(f"    状態: {task_state.get('status', 'unknown')}")
+                                        print(f"    開始時刻: {task_state.get('start_time', 'unknown')}")
+                                        print(f"    処理時間: {time.time() - task_state.get('start_time', time.time()):.1f}秒")
+                                        print(f"    処理ステップ: {task_state.get('step', 'unknown')}")
+                                if hasattr(agent, 'reasoning_history'):
+                                    print(f"  推論履歴エントリ数: {len(agent.reasoning_history)}")
+                                    recent_history = agent.reasoning_history[-3:] if len(agent.reasoning_history) > 0 else []
+                                    for i, entry in enumerate(recent_history):
+                                        print(f"    履歴 {i+1}: タイプ={entry.get('type', 'unknown')}, タスク={entry.get('task_id', 'unknown')}")
                             
                             if hasattr(agent, 'message_queue') and len(agent.message_queue) > 0:
                                 print(f"  エージェント '{agent_id}' のメッセージキューを処理します")
                                 if hasattr(agent, 'process_messages'):
-                                    agent.process_messages()
+                                    processed = agent.process_messages()
+                                    print(f"  処理されたメッセージ: {len(processed)}件")
                             
                             print(f"タスクメッセージを '{agent_id}' に再送信します")
                             self.send_message(
@@ -524,17 +578,21 @@ class MultiAgentSystem:
                                 message_type="task",
                                 metadata={
                                     "task_id": task_id,
-                                    "task_type": task_info['type']
+                                    "task_type": task_info['type'],
+                                    "retry": True,  # 再試行フラグを追加
+                                    "retry_count": task_info.get("retry_count", 0) + 1
                                 }
                             )
                         else:
                             print(f"警告: エージェント '{agent_id}' が見つかりません")
                     
-                    if status_wait_time > 25:
-                        print(f"タスク '{task_id}' が25秒以上処理中のままです。強制的に完了状態に移行します。")
+                    if status_wait_time > 15:
+                        print(f"タスク '{task_id}' が15秒以上処理中のままです。強制的に完了状態に移行します。")
                         
                         if not task_info.get("results"):
                             print(f"タスク '{task_id}' には結果がありません。デフォルト結果を生成します。")
+                            task_type = task_info.get('type', 'unknown')
+                            print(f"タスク '{task_id}' (タイプ: {task_type}) のデフォルト結果を生成します")
                             self.coordinator._generate_default_result_for_stuck_task(task_id, task_info)
                         
                         self.coordinator.update_task_status(task_id, "completed")
