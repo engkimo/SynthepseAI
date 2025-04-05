@@ -216,10 +216,28 @@ class MultiAgentSystem:
                 print(f"利用可能なエージェント: {list(self.agents.keys())}")
                 return False
                 
-            if receiver_id not in self.agents and receiver_id != "broadcast":
+            if receiver_id not in self.agents and receiver_id != "broadcast" and receiver_id != "system":
                 print(f"警告: 受信者 '{receiver_id}' が見つかりません")
                 print(f"利用可能なエージェント: {list(self.agents.keys())}")
                 return False
+                
+            if receiver_id == "system":
+                print(f"システム宛てのメッセージを処理: 送信者={sender_id}, タイプ={message_type}")
+                
+                if message_type == "task_result" and metadata and "task_id" in metadata:
+                    task_id = metadata["task_id"]
+                    print(f"タスク結果メッセージをコーディネーターに転送: タスクID={task_id}")
+                    
+                    if self.coordinator:
+                        return self.send_message(
+                            sender_id="system",
+                            receiver_id="coordinator",
+                            content=content,
+                            message_type=message_type,
+                            metadata=metadata
+                        )
+                
+                return True  # システム宛てのメッセージは処理されたとみなす
         
         if sender_id == "system":
             from .agent_base import AgentMessage
@@ -328,6 +346,29 @@ class MultiAgentSystem:
         results = []
         
         print(f"メッセージを転送: 送信者={sender_agent_id}, 受信者={message.receiver_id}, タイプ={message.message_type}")
+        
+        if message.receiver_id == "system":
+            print(f"システム宛てのメッセージを処理: 送信者={sender_agent_id}, タイプ={message.message_type}")
+            
+            if message.message_type == "task_result" and message.metadata and "task_id" in message.metadata:
+                task_id = message.metadata["task_id"]
+                print(f"タスク結果メッセージをコーディネーターに転送: タスクID={task_id}")
+                
+                if self.coordinator:
+                    if not message.metadata:
+                        message.metadata = {}
+                    message.metadata["original_sender"] = sender_agent_id
+                    
+                    modified_message = message
+                    modified_message.receiver_id = "coordinator"
+                    self.coordinator.receive_message(modified_message)
+                    print(f"タスク結果メッセージをコーディネーターに転送しました: タスクID={task_id}, 元の送信者={sender_agent_id}")
+                    total_processed += 1
+                    results.append(message)
+            
+            if total_processed > 0:
+                print(f"システム宛てのメッセージを {total_processed} 件処理しました")
+            return results  # システム宛てのメッセージは処理されたとみなす
         
         if message.receiver_id == "coordinator" and self.coordinator:
             print(f"コーディネーターへのメッセージを直接転送します")

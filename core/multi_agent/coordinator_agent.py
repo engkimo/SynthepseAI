@@ -320,9 +320,15 @@ class CoordinatorAgent(MultiAgentBase):
             if task_id:
                 print(f"タスク結果を受信: タスクID={task_id}, 送信者={message.sender_id}")
                 print(f"結果の概要: {str(message.content)[:100]}...")
+                
+                original_sender = message.sender_id
+                if message.sender_id == "system" and metadata.get("original_sender"):
+                    original_sender = metadata.get("original_sender")
+                    print(f"システム経由のメッセージ: 元の送信者={original_sender}")
+                
                 success = self.add_task_result(
                     task_id=task_id,
-                    agent_id=message.sender_id,
+                    agent_id=original_sender,
                     result=message.content
                 )
                 
