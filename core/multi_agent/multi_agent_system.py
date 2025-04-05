@@ -72,6 +72,10 @@ class MultiAgentSystem:
         """エージェントを初期化"""
         self.config = self.config or {}
         
+        mock_mode = self.config.get("mock_mode", False)
+        if mock_mode:
+            print("マルチエージェントシステムはモックモードで動作中です")
+        
         coordinator = CoordinatorAgent(llm=self.llm)
         self.coordinator = coordinator
         self.agents[coordinator.agent_id] = coordinator
@@ -89,7 +93,8 @@ class MultiAgentSystem:
         self.agents[reasoning_agent.agent_id] = reasoning_agent
         
         tool_config = {
-            "use_web_tools": self.tavily_api_key is not None or self.firecrawl_api_key is not None
+            "use_web_tools": (self.tavily_api_key is not None or self.firecrawl_api_key is not None) and not mock_mode,
+            "mock_mode": mock_mode
         }
         
         tool_executor_agent = ToolExecutorAgent(
