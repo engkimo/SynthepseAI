@@ -67,6 +67,8 @@ class EnhancedPersistentThinkingAI:
         
         self.rgcn_processor = RGCNProcessor(device=device, use_compatibility_mode=self.use_compatibility_mode)
         
+        self._initialize_knowledge_graph()
+        
         self.task_db = TaskDatabase(":memory:")
         self.agent = AutoPlanAgent(
             name="PersistentThinkingAgent",
@@ -99,6 +101,18 @@ class EnhancedPersistentThinkingAI:
         
         self.thinking_thread = None
         self.stop_thinking = False
+    def _initialize_knowledge_graph(self):
+        """知識グラフを初期化（ファイルが存在しない場合は作成）"""
+        self.knowledge_triples = []
+        self.graph = None
+        
+        graph_file_path = "./knowledge_graph.json"
+        
+        if not os.path.exists(graph_file_path):
+            self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+            self.rgcn_processor.save_graph(graph_file_path)
+            print(f"初期知識グラフファイルを作成しました: {graph_file_path}")
+
         self.thinking_queue = Queue()
     
     def _load_knowledge_db(self):

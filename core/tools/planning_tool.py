@@ -263,6 +263,26 @@ class PlanningTool(BaseTool):
         
         response = self.llm.generate_text(prompt)
         
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            print("モックモード: デフォルトのタスク計画を生成します")
+            return [
+                {
+                    "description": "必要なライブラリをインポートする",
+                    "dependencies": [],
+                    "required_libraries": ["os", "json", "datetime"]
+                },
+                {
+                    "description": f"目標「{goal}」の初期分析を行う",
+                    "dependencies": ["task_1"],
+                    "required_libraries": []
+                },
+                {
+                    "description": "結果をまとめる",
+                    "dependencies": ["task_2"],
+                    "required_libraries": []
+                }
+            ]
+        
         try:
             # JSONを抽出
             tasks_json = self._extract_json(response)

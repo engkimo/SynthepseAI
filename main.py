@@ -29,9 +29,18 @@ def main():
         with open(args.config, 'r') as f:
             config = json.load(f)
     
+    openai_api_key = os.environ.get("OPENAI_API_KEY") or config.get('openai_api_key')
+    if not openai_api_key:
+        print("警告: OpenAI APIキーが設定されていません。モックモードで実行します。")
+        print("APIキーを設定するには次のいずれかの方法を使用してください：")
+        print("1. 環境変数に直接設定: export OPENAI_API_KEY=your_api_key_here")
+        print("2. .envファイルに設定: .envファイルに「OPENAI_API_KEY=your_api_key_here」を追加")
+        print("3. configファイルに設定: config.jsonファイルに「openai_api_key」フィールドを追加")
+        print("LLMはモックモードで動作中です。実際のAPIコールは行われません。")
+    
     # Initialize components
     llm = LLM(
-        api_key=config.get('openai_api_key'),
+        api_key=openai_api_key,
         model=config.get('model', 'gpt-4-turbo'),
         temperature=config.get('temperature', 0.7)
     )

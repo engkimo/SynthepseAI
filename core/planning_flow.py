@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Any
 from .base_flow import BaseFlow
 from .task_database import TaskDatabase, TaskStatus
 from .base_agent import BaseAgent
+from .auto_plan_agent import AutoPlanAgent  # AutoPlanAgentをインポート
 
 class PlanningFlow(BaseFlow):
     def __init__(self, llm, task_db: TaskDatabase):

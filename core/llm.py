@@ -20,8 +20,11 @@ class LLM:
             # Try to get the API key from environment variables
             openai_api_key = os.environ.get("OPENAI_API_KEY")
             
+        self.mock_mode = False
         if not openai_api_key:
-            raise ValueError("OpenAI API key not provided")
+            print("LLMはモックモードで動作中です。実際のAPIコールは行われません。")
+            self.mock_mode = True
+            openai_api_key = "sk-mock-key"
             
         self.client = OpenAI(api_key=openai_api_key)
     
@@ -36,6 +39,9 @@ class LLM:
         elif isinstance(prompt, list):
             messages = prompt
         
+        if self.mock_mode:
+            return "これはモックモードのレスポンスです。実際のAPIコールは行われていません。"
+            
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -59,6 +65,14 @@ class LLM:
         Only provide the code, no explanations or markdown.
         """
         
+        if self.mock_mode:
+            return """
+def mock_function():
+    print("これはモックモードで生成されたコードです。")
+    print("タスク: " + repr(description))
+    return "モック結果"
+            """.strip()
+            
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -102,6 +116,15 @@ class LLM:
         Only provide the fixed code, no explanations or markdown.
         """
         
+        if self.mock_mode:
+            return f"""
+try:
+    {code.strip()}
+except Exception as e:
+    print(f"エラーが発生しました: {{str(e)}}")
+    print("モックモードでは詳細な修正は提供されません。")
+            """.strip()
+            
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -132,6 +155,10 @@ class LLM:
         Returns:
             編集が成功したかどうか
         """
+        if self.mock_mode:
+            print(f"モックモード: 知識編集をシミュレート - 主題: {subject}")
+            return True
+            
         try:
             prompt = f"""
             以下の知識を学習してください：
