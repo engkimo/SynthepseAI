@@ -480,6 +480,10 @@ class EnhancedPersistentThinkingAI:
         if not web_info or not web_info.get("results"):
             return
             
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            print(f"モックモード: Web情報処理をスキップします。タスク: {task}")
+            return
+            
         results = web_info.get("results", [])
         combined_content = "\n\n".join([r.get("content", "") for r in results if r.get("content")])
         
@@ -534,6 +538,23 @@ class EnhancedPersistentThinkingAI:
         """現在のタスクについて考える"""
         task = self.thinking_state["current_task"]
         
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            thought = "モックモード: 継続的思考は制限されています。実際のAPIコールは行われません。"
+            
+            self.thinking_state["reflections"].append({
+                "time": time.time(),
+                "content": thought
+            })
+            
+            self._log_thought("continuous_thinking", {
+                "task": task,
+                "thought": thought,
+                "mock_mode": True
+            })
+            
+            self.thinking_state["last_thought_time"] = time.time()
+            return
+        
         prompt = f"""
         現在取り組んでいるタスクについて、新たな視点や考え方はありますか？
         
@@ -568,6 +589,26 @@ class EnhancedPersistentThinkingAI:
             
         subjects = list(self.knowledge_db.keys())
         if not subjects:
+            return
+        
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            subject = random.choice(subjects) if subjects else "モックサブジェクト"
+            thought = "モックモード: 知識ベース考察は制限されています。実際のAPIコールは行われません。"
+            
+            self.thinking_state["reflections"].append({
+                "time": time.time(),
+                "subject": subject,
+                "content": thought
+            })
+            
+            self._log_thought("knowledge_reflection", {
+                "subject": subject,
+                "fact": "モックモード",
+                "thought": thought,
+                "mock_mode": True
+            })
+            
+            self.thinking_state["last_thought_time"] = time.time()
             return
             
         subject = random.choice(subjects)
