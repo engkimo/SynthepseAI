@@ -39,19 +39,22 @@ class WebCrawlingTool(BaseTool):
             if url:
                 return self._fetch_url(url)
             elif query:
-                try:
-                    if self.tavily_api_key:
-                        return self._search_with_tavily(query, search_depth)
-                except Exception as e:
-                    logging.warning(f"Tavily検索に失敗しました: {str(e)}。Firecrawlにフォールバックします。")
+                if not self.tavily_api_key and not self.firecrawl_api_key:
+                    return ToolResult(False, error="有効なAPIキーが設定されていません。TAVILY_API_KEYまたはFIRECRAWL_API_KEYを環境変数に設定してください。")
                 
-                try:
-                    if self.firecrawl_api_key:
+                if self.tavily_api_key:
+                    try:
+                        return self._search_with_tavily(query, search_depth)
+                    except Exception as e:
+                        logging.warning(f"Tavily検索に失敗しました: {str(e)}。Firecrawlにフォールバックします。")
+                
+                if self.firecrawl_api_key:
+                    try:
                         return self._search_with_firecrawl(query)
-                except Exception as e:
-                    return ToolResult(False, error=f"Web検索に失敗しました: {str(e)}")
-                    
-                return ToolResult(False, error="有効なAPIキーが設定されていません")
+                    except Exception as e:
+                        return ToolResult(False, error=f"Web検索に失敗しました: {str(e)}")
+                
+                return ToolResult(False, error="すべての検索プロバイダーが失敗しました。APIキーを確認してください。")
             else:
                 return ToolResult(False, error="クエリまたはURLが必要です")
         except Exception as e:
