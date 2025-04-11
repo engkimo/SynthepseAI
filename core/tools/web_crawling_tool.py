@@ -60,11 +60,11 @@ class WebCrawlingTool(BaseTool):
     def _search_with_tavily(self, query, search_depth="basic"):
         """TavilyのAPIを使用して検索"""
         try:
-            import tavily
+            from tavily import TavilyClient
         except ImportError:
             return ToolResult(False, error="tavily-pythonパッケージがインストールされていません")
         
-        tavily.api_key = self.tavily_api_key
+        client = TavilyClient(api_key=self.tavily_api_key)
         
         search_params = {
             "query": query,
@@ -74,7 +74,7 @@ class WebCrawlingTool(BaseTool):
             "exclude_domains": [],  # 特定のドメインを除外する場合
         }
         
-        response = tavily.search(**search_params)
+        response = client.search(**search_params)
         
         results = []
         for result in response.get("results", []):
