@@ -357,6 +357,7 @@ class PlanningTool(BaseTool):
         
         knowledge_insights = ""
         try:
+            import re
             knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
             if os.path.exists(knowledge_db_path):
                 with open(knowledge_db_path, 'r', encoding='utf-8') as f:
