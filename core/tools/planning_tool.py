@@ -498,6 +498,62 @@ if __name__ == "__main__":
             for module in modules[:3]  # 最大3つのモジュールを使用
         ])
         
+        knowledge_insights = ""
+        try:
+            import re
+            knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
+            if os.path.exists(knowledge_db_path):
+                with open(knowledge_db_path, 'r', encoding='utf-8') as f:
+                    knowledge_db = json.load(f)
+                
+                keywords = re.findall(r'\b\w{4,}\b', task.description.lower())
+                
+                related_knowledge = []
+                for subject, data in knowledge_db.items():
+                    for keyword in keywords:
+                        if keyword in subject.lower() or (data.get("fact") and keyword in data.get("fact", "").lower()):
+                            related_knowledge.append({
+                                "subject": subject,
+                                "fact": data.get("fact"),
+                                "confidence": data.get("confidence", 0)
+                            })
+                            break
+                
+                if related_knowledge:
+                    knowledge_insights += "\nRelevant knowledge from previous tasks:\n"
+                    for k in related_knowledge[:3]:
+                        knowledge_insights += f"- {k['subject']}: {k['fact']} (confidence: {k['confidence']})\n"
+        except Exception as e:
+            print(f"Error getting knowledge insights: {str(e)}")
+        
+        thinking_insights = ""
+        try:
+            thinking_log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
+            if os.path.exists(thinking_log_path):
+                recent_thoughts = []
+                with open(thinking_log_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            thought = json.loads(line.strip())
+                            if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
+                                recent_thoughts.append(thought)
+                        except:
+                            pass
+                
+                if recent_thoughts:
+                    thinking_insights += "\nRecent thinking insights:\n"
+                    for thought in recent_thoughts[-3:]:
+                        thought_type = thought.get("type", "")
+                        content = thought.get("content", {})
+                        if thought_type == "continuous_thinking":
+                            thinking_insights += f"- Thought: {content.get('thought', '')}\n"
+                        elif thought_type == "knowledge_reflection":
+                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('content', '')}\n"
+                        elif thought_type == "web_knowledge_update":
+                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
+        except Exception as e:
+            print(f"Error getting thinking insights: {str(e)}")
+        
         prompt = f"""
         Overall Goal: {goal}
         
@@ -509,20 +565,34 @@ if __name__ == "__main__":
         Available Reusable Modules:
         {modules_info}
         
+        {knowledge_insights}
+        
+        {thinking_insights}
+        
         Write a Python script to accomplish this task. The script should:
         1. Reuse the provided modules whenever possible
         2. Be self-contained and handle errors gracefully
         3. Store the final result in a variable called 'result'
-        4. Include appropriate comments and error handling
+        4. Include appropriate error handling
+        5. Use the knowledge database and thinking log functions provided in the template
         
-        IMPORTANT: Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
+        IMPORTANT: 
+        - Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
+        - Your script will have access to these helper functions:
+          * load_knowledge_db() - Loads the knowledge database
+          * save_knowledge_db(knowledge_db) - Saves the knowledge database
+          * log_thought(thought_type, content) - Logs a thought to the thinking log
+          * update_knowledge(subject, fact, confidence) - Updates knowledge in the database
+          * get_knowledge(subject) - Gets knowledge about a specific subject
+          * get_related_knowledge(keywords, limit) - Gets knowledge related to keywords
         
         Follow these best practices:
         - Include all necessary imports at the top
         - Import and use the provided modules instead of reimplementing the same functionality
         - Handle potential missing dependencies with try/except blocks
         - For file operations, use 'with' statements and handle file not found errors
-        - Add comments to indicate where modules are being used
+        - Use the knowledge database to store any valuable insights discovered during task execution
+        - Log important thoughts and decisions to the thinking log
         - Be sure main code starts at the left margin (column 0) with no leading whitespace
         
         Only provide the code that would replace the `{{main_code}}` part in the template.

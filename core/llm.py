@@ -67,10 +67,120 @@ class LLM:
         
         if self.mock_mode:
             return """
-def mock_function():
-    print("これはモックモードで生成されたコードです。")
-    print("タスク: " + repr(description))
-    return "モック結果"
+import os
+import json
+import time
+import random
+import datetime
+
+task_description = task_info.get("description", "Unknown task")
+
+related_knowledge = get_related_knowledge([word for word in task_description.split() if len(word) > 3], 3)
+if related_knowledge:
+    log_thought("task_start", {
+        "task": task_description,
+        "related_knowledge_found": len(related_knowledge)
+    })
+    
+    for knowledge in related_knowledge:
+        print(f"関連知識: {knowledge['subject']} - {knowledge['fact']}")
+else:
+    log_thought("task_start", {
+        "task": task_description,
+        "related_knowledge_found": 0
+    })
+    print("このタスクに関連する既存の知識は見つかりませんでした。")
+
+try:
+    print(f"タスク「{task_description}」を実行中...")
+    
+    if "ライブラリをインポート" in task_description:
+        libraries = [
+            "os", "sys", "json", "datetime", "time", "random", 
+            "numpy", "pandas", "matplotlib", "requests", 
+            "beautifulsoup4", "scikit-learn"
+        ]
+        result = ", ".join(libraries)
+        update_knowledge("必要なライブラリ", result, 0.9)
+        
+    elif "分析" in task_description or "解析" in task_description:
+        analysis_results = {
+            "データポイント数": random.randint(100, 1000),
+            "平均値": round(random.uniform(10, 100), 2),
+            "中央値": round(random.uniform(10, 100), 2),
+            "標準偏差": round(random.uniform(1, 10), 2),
+            "最小値": round(random.uniform(0, 50), 2),
+            "最大値": round(random.uniform(50, 150), 2),
+            "異常値の数": random.randint(0, 10)
+        }
+        result = f"データ分析結果: {json.dumps(analysis_results, ensure_ascii=False, indent=2)}"
+        update_knowledge("データ分析結果", str(analysis_results), 0.8)
+        
+    elif "検索" in task_description or "調査" in task_description:
+        search_results = {
+            "検索クエリ": task_description,
+            "ヒット数": random.randint(10, 100),
+            "関連度の高い情報": [
+                f"情報源1: {datetime.datetime.now().strftime('%Y-%m-%d')}の最新データによると...",
+                f"情報源2: 専門家の見解によれば...",
+                f"情報源3: 過去の類似事例では..."
+            ]
+        }
+        result = f"検索結果: {json.dumps(search_results, ensure_ascii=False, indent=2)}"
+        update_knowledge("検索結果", str(search_results), 0.7)
+        
+    elif "予測" in task_description or "予想" in task_description:
+        prediction_results = {
+            "予測対象": task_description,
+            "予測値": round(random.uniform(0, 100), 2),
+            "信頼区間": [round(random.uniform(0, 50), 2), round(random.uniform(50, 100), 2)],
+            "精度": round(random.uniform(0.7, 0.95), 2),
+            "使用モデル": random.choice(["線形回帰", "ランダムフォレスト", "ニューラルネットワーク"])
+        }
+        result = f"予測結果: {json.dumps(prediction_results, ensure_ascii=False, indent=2)}"
+        update_knowledge("予測モデル結果", str(prediction_results), 0.75)
+        
+    elif "まとめ" in task_description or "結果" in task_description:
+        all_knowledge = load_knowledge_db()
+        summary = "タスク実行の結果まとめ:\\n"
+        for subject, data in all_knowledge.items():
+            if data.get("confidence", 0) > 0.7:
+                summary += f"- {subject}: {data.get('fact', '')}\\n"
+        result = summary
+        update_knowledge("タスク実行まとめ", summary, 0.9)
+        
+    else:
+        result = f"タスク「{task_description}」が正常に完了しました。"
+    
+    log_thought("task_execution", {
+        "task": task_description,
+        "status": "success",
+        "result": result
+    })
+    
+    update_knowledge(
+        f"タスク実行: {task_description}",
+        f"結果: {result}",
+        0.8
+    )
+    
+    return result
+    
+except Exception as e:
+    error_message = str(e)
+    
+    log_thought("task_error", {
+        "task": task_description,
+        "error": error_message
+    })
+    
+    update_knowledge(
+        f"エラーパターン: {type(e).__name__}",
+        f"タスク「{task_description}」で発生: {error_message}",
+        0.7
+    )
+    
+    return f"エラー: {error_message}"
             """.strip()
             
         try:
