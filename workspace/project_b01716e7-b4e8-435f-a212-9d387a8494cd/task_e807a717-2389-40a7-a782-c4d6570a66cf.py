@@ -1,13 +1,13 @@
 task_info = {
-    "task_id": "867ed94f-afbd-4f9a-a4c2-0f85db9e1e1b",
-    "description": "Make predictions about the future direction of SoftBank's Crystal Intelligence based on current data and trends.",
-    "plan_id": "9ae9d415-d14e-4c04-bde7-7a8868393ea1"
+    "task_id": "e807a717-2389-40a7-a782-c4d6570a66cf",
+    "description": "Identify and list reliable sources or URLs where information about 麻生太郎 can be found.",
+    "plan_id": "b01716e7-b4e8-435f-a212-9d387a8494cd"
     }
 
 task_info = {
-    "task_id": "867ed94f-afbd-4f9a-a4c2-0f85db9e1e1b",
-    "description": "Make predictions about the future direction of SoftBank's Crystal Intelligence based on current data and trends.",
-    "plan_id": "9ae9d415-d14e-4c04-bde7-7a8868393ea1",
+    "task_id": "e807a717-2389-40a7-a782-c4d6570a66cf",
+    "description": "Identify and list reliable sources or URLs where information about 麻生太郎 can be found.",
+    "plan_id": "b01716e7-b4e8-435f-a212-9d387a8494cd",
 }
 
 # 必要なライブラリのインポート
