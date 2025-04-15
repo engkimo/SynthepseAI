@@ -383,6 +383,34 @@ class PlanningTool(BaseTool):
         except Exception as e:
             print(f"Error getting knowledge insights: {str(e)}")
         
+        thinking_insights = ""
+        try:
+            thinking_log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
+            if os.path.exists(thinking_log_path):
+                recent_thoughts = []
+                with open(thinking_log_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            thought = json.loads(line.strip())
+                            if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
+                                recent_thoughts.append(thought)
+                        except:
+                            pass
+                
+                if recent_thoughts:
+                    thinking_insights += "\nRecent thinking insights:\n"
+                    for thought in recent_thoughts[-3:]:
+                        thought_type = thought.get("type", "")
+                        content = thought.get("content", {})
+                        if thought_type == "continuous_thinking":
+                            thinking_insights += f"- Thought: {content.get('thought', '')}\n"
+                        elif thought_type == "knowledge_reflection":
+                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')}\n"
+                        elif thought_type == "web_knowledge_update":
+                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
+        except Exception as e:
+            print(f"Error getting thinking insights: {str(e)}")
+
         prompt = f"""
         Overall Goal: {goal}
         
@@ -395,12 +423,19 @@ class PlanningTool(BaseTool):
         
         {knowledge_insights}
         
+        {thinking_insights}
+        
         Write a Python script to accomplish this task. The script should:
         1. Be self-contained and handle errors gracefully
         2. Store the final result in a variable called 'result'
         3. Include appropriate error handling
         4. Check if required modules are available and provide helpful error messages
         5. Use the knowledge database and thinking log functions provided in the template
+        6. Actively contribute to the continuous learning system by:
+           - Logging important thoughts and decisions
+           - Updating the knowledge database with new insights
+           - Retrieving and building upon existing knowledge
+           - Testing hypotheses and recording results
         
         IMPORTANT: 
         - Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
@@ -420,6 +455,11 @@ class PlanningTool(BaseTool):
         - Use the knowledge database to store any valuable insights discovered during task execution
         - Log important thoughts and decisions to the thinking log
         - Be sure main code starts at the left margin (column 0) with no leading whitespace
+        - Implement a research-oriented approach:
+          * Formulate hypotheses based on existing knowledge
+          * Test hypotheses through data analysis or information gathering
+          * Record results and update knowledge accordingly
+          * Consider alternative explanations and approaches
         
         Only provide the code that would replace the `{{main_code}}` part in the template.
         Do not include the template structure or import statements, as they will be added automatically.
@@ -548,7 +588,7 @@ if __name__ == "__main__":
                         if thought_type == "continuous_thinking":
                             thinking_insights += f"- Thought: {content.get('thought', '')}\n"
                         elif thought_type == "knowledge_reflection":
-                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('content', '')}\n"
+                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')}\n"
                         elif thought_type == "web_knowledge_update":
                             thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
         except Exception as e:

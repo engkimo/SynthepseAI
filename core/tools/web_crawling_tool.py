@@ -63,21 +63,34 @@ class WebCrawlingTool(BaseTool):
     def _search_with_tavily(self, query, search_depth="basic"):
         """TavilyのAPIを使用して検索"""
         try:
-            from tavily import TavilyClient
+            try:
+                from tavily import TavilyClient
+                client = TavilyClient(api_key=self.tavily_api_key)
+                
+                search_params = {
+                    "query": query,
+                    "search_depth": search_depth,
+                    "max_results": self.max_results,
+                    "include_domains": [],  # 特定のドメインに限定する場合
+                    "exclude_domains": [],  # 特定のドメインを除外する場合
+                }
+                
+                response = client.search(**search_params)
+            except (ImportError, AttributeError):
+                import tavily
+                
+                search_params = {
+                    "api_key": self.tavily_api_key,
+                    "query": query,
+                    "search_depth": search_depth,
+                    "max_results": self.max_results,
+                }
+                
+                response = tavily.search(**search_params)
         except ImportError:
-            return ToolResult(False, error="tavily-pythonパッケージがインストールされていません")
-        
-        client = TavilyClient(api_key=self.tavily_api_key)
-        
-        search_params = {
-            "query": query,
-            "search_depth": search_depth,
-            "max_results": self.max_results,
-            "include_domains": [],  # 特定のドメインに限定する場合
-            "exclude_domains": [],  # 特定のドメインを除外する場合
-        }
-        
-        response = client.search(**search_params)
+            return ToolResult(False, error="tavily-pythonパッケージがインストールされていません。pip install tavily-python を実行してください。")
+        except Exception as e:
+            return ToolResult(False, error=f"Tavily検索エラー: {str(e)}")
         
         results = []
         for result in response.get("results", []):

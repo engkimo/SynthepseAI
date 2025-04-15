@@ -320,16 +320,33 @@ def get_template_for_task(task_description, required_libraries=None):
         'memory', '持続', 'persistent', '連携', 'integration', '知識グラフ'
     ]
     
-    # キーワードに基づいてテンプレートを選択
-    template = None
-    if any(keyword in task_lower for keyword in persistent_thinking_keywords):
-        template = PERSISTENT_THINKING_TEMPLATE
-    elif any(keyword in task_lower for keyword in data_analysis_keywords):
-        template = DATA_ANALYSIS_TEMPLATE
+    template = PERSISTENT_THINKING_TEMPLATE
+    
+    task_type = "general"
+    if any(keyword in task_lower for keyword in data_analysis_keywords):
+        task_type = "data_analysis"
     elif any(keyword in task_lower for keyword in web_scraping_keywords):
-        template = WEB_SCRAPING_TEMPLATE
-    else:
-        template = PERSISTENT_THINKING_TEMPLATE
+        task_type = "web_scraping"
+    
+    try:
+        import time
+        import json
+        import os
+        
+        log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
+        if os.path.exists(log_path):
+            with open(log_path, 'a', encoding='utf-8') as f:
+                log_entry = {
+                    "timestamp": time.time(),
+                    "type": "template_selection",
+                    "content": {
+                        "task_description": task_description,
+                        "selected_template_type": task_type
+                    }
+                }
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"テンプレート選択のログ記録に失敗: {str(e)}")
     
     # テンプレート内のプレースホルダーを検証
     import re
