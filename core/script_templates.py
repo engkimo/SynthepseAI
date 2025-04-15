@@ -119,6 +119,175 @@ def main():
 result = main()
 """
 
+PERSISTENT_THINKING_TEMPLATE = '''
+# 必要なライブラリのインポート
+{imports}
+import os
+import json
+import time
+
+KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
+THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
+
+def load_knowledge_db():
+    """知識データベースを読み込む"""
+    try:
+        if os.path.exists(KNOWLEDGE_DB_PATH):
+            with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"知識データベース読み込みエラー: {str(e)}")
+        return {}
+
+def save_knowledge_db(knowledge_db):
+    """知識データベースを保存する"""
+    try:
+        with open(KNOWLEDGE_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(knowledge_db, indent=2, ensure_ascii=False, f)
+        return True
+    except Exception as e:
+        print(f"知識データベース保存エラー: {str(e)}")
+        return False
+
+def log_thought(thought_type, content):
+    """思考ログに記録する"""
+    try:
+        log_entry = {
+            "timestamp": time.time(),
+            "type": thought_type,
+            "content": content
+        }
+        with open(THINKING_LOG_PATH, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
+        return True
+    except Exception as e:
+        print(f"思考ログ記録エラー: {str(e)}")
+        return False
+
+def update_knowledge(subject, fact, confidence=0.8):
+    """知識を更新する"""
+    try:
+        knowledge_db = load_knowledge_db()
+        
+        if subject not in knowledge_db:
+            knowledge_db[subject] = {}
+            original_fact = None
+        else:
+            original_fact = knowledge_db[subject].get("fact")
+        
+        knowledge_db[subject]["fact"] = fact
+        knowledge_db[subject]["confidence"] = confidence
+        knowledge_db[subject]["last_updated"] = time.time()
+        
+        save_success = save_knowledge_db(knowledge_db)
+        
+        log_thought("knowledge_update", {
+            "subject": subject,
+            "original_fact": original_fact,
+            "new_fact": fact,
+            "confidence": confidence,
+            "success": save_success
+        })
+        
+        return save_success
+    except Exception as e:
+        print(f"知識更新エラー: {str(e)}")
+        return False
+
+def get_knowledge(subject):
+    """特定の主題に関する知識を取得する"""
+    try:
+        knowledge_db = load_knowledge_db()
+        return knowledge_db.get(subject, {}).get("fact")
+    except Exception as e:
+        print(f"知識取得エラー: {str(e)}")
+        return None
+
+def get_related_knowledge(keywords, limit=5):
+    """キーワードに関連する知識を取得する"""
+    try:
+        knowledge_db = load_knowledge_db()
+        results = []
+        
+        for subject, data in knowledge_db.items():
+            for keyword in keywords:
+                if keyword.lower() in subject.lower() or (data.get("fact") and keyword.lower() in data.get("fact", "").lower()):
+                    results.append({
+                        "subject": subject,
+                        "fact": data.get("fact"),
+                        "confidence": data.get("confidence", 0)
+                    })
+                    break
+                    
+            if len(results) >= limit:
+                break
+                
+        return results
+    except Exception as e:
+        print(f"関連知識取得エラー: {str(e)}")
+        return []
+
+def main():
+    try:
+        task_info = getattr(globals().get('task_info', {}), 'task_description', 'Unknown task')
+        log_thought("task_execution_start", {"task": task_info})
+        
+        knowledge_db = load_knowledge_db()
+        
+        # メイン処理
+{main_code}
+        
+        log_thought("task_execution_complete", {
+            "task": task_info,
+            "result": result if 'result' in locals() else "No result variable found"
+        })
+        
+        return result if 'result' in locals() else "Task completed successfully"
+        
+    except ImportError as e:
+        # 必要なパッケージがない場合のエラー処理
+        missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
+        error_msg = f"エラー: 必要なモジュール '{missing_module}' がインストールされていません。"
+        print(error_msg)
+        print(f"次のコマンドでインストールしてください: pip install {missing_module}")
+        
+        log_thought("task_execution_error", {
+            "task": getattr(globals().get('task_info', {}), 'task_description', 'Unknown task'),
+            "error_type": "ImportError",
+            "error_message": error_msg
+        })
+        
+        return error_msg
+        
+    except Exception as e:
+        # その他のエラー処理
+        import traceback
+        error_details = traceback.format_exc()
+        error_msg = f"エラー: {str(e)}"
+        print(error_msg)
+        print(error_details)
+        
+        log_thought("task_execution_error", {
+            "task": getattr(globals().get('task_info', {}), 'task_description', 'Unknown task'),
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": error_details
+        })
+        
+        update_knowledge(
+            f"エラーパターン: {type(e).__name__}",
+            f"タスク「{task_info}」で発生: {str(e)}",
+            confidence=0.7
+        )
+        
+        return error_msg
+
+# スクリプト実行
+if __name__ == "__main__":
+    result = main()
+'''
+
 def get_template_for_task(task_description, required_libraries=None):
     """
     タスクの説明に基づいて適切なテンプレートを選択
@@ -145,14 +314,22 @@ def get_template_for_task(task_description, required_libraries=None):
         'bs4', 'ウェブ', 'サイト', 'site', 'url', 'http'
     ]
     
+    persistent_thinking_keywords = [
+        '知識', '学習', 'knowledge', 'learning', '思考', 'thinking', '継続学習',
+        '自己改善', 'self-improvement', '知識ベース', 'knowledge base', '記憶',
+        'memory', '持続', 'persistent', '連携', 'integration', '知識グラフ'
+    ]
+    
     # キーワードに基づいてテンプレートを選択
     template = None
-    if any(keyword in task_lower for keyword in data_analysis_keywords):
+    if any(keyword in task_lower for keyword in persistent_thinking_keywords):
+        template = PERSISTENT_THINKING_TEMPLATE
+    elif any(keyword in task_lower for keyword in data_analysis_keywords):
         template = DATA_ANALYSIS_TEMPLATE
     elif any(keyword in task_lower for keyword in web_scraping_keywords):
         template = WEB_SCRAPING_TEMPLATE
     else:
-        template = DEPENDENCY_AWARE_TEMPLATE
+        template = PERSISTENT_THINKING_TEMPLATE
     
     # テンプレート内のプレースホルダーを検証
     import re

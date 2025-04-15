@@ -355,6 +355,33 @@ class PlanningTool(BaseTool):
                 Import and use these modules when appropriate instead of duplicating functionality.
                 """
         
+        knowledge_insights = ""
+        try:
+            knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
+            if os.path.exists(knowledge_db_path):
+                with open(knowledge_db_path, 'r', encoding='utf-8') as f:
+                    knowledge_db = json.load(f)
+                
+                keywords = re.findall(r'\b\w{4,}\b', task.description.lower())
+                
+                related_knowledge = []
+                for subject, data in knowledge_db.items():
+                    for keyword in keywords:
+                        if keyword in subject.lower() or (data.get("fact") and keyword in data.get("fact", "").lower()):
+                            related_knowledge.append({
+                                "subject": subject,
+                                "fact": data.get("fact"),
+                                "confidence": data.get("confidence", 0)
+                            })
+                            break
+                
+                if related_knowledge:
+                    knowledge_insights += "\nRelevant knowledge from previous tasks:\n"
+                    for k in related_knowledge[:3]:
+                        knowledge_insights += f"- {k['subject']}: {k['fact']} (confidence: {k['confidence']})\n"
+        except Exception as e:
+            print(f"Error getting knowledge insights: {str(e)}")
+        
         prompt = f"""
         Overall Goal: {goal}
         
@@ -365,20 +392,32 @@ class PlanningTool(BaseTool):
         
         {learning_insights}
         
+        {knowledge_insights}
+        
         Write a Python script to accomplish this task. The script should:
         1. Be self-contained and handle errors gracefully
         2. Store the final result in a variable called 'result'
-        3. Include appropriate comments and error handling
+        3. Include appropriate error handling
         4. Check if required modules are available and provide helpful error messages
+        5. Use the knowledge database and thinking log functions provided in the template
         
-        IMPORTANT: Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
+        IMPORTANT: 
+        - Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
+        - Your script will have access to these helper functions:
+          * load_knowledge_db() - Loads the knowledge database
+          * save_knowledge_db(knowledge_db) - Saves the knowledge database
+          * log_thought(thought_type, content) - Logs a thought to the thinking log
+          * update_knowledge(subject, fact, confidence) - Updates knowledge in the database
+          * get_knowledge(subject) - Gets knowledge about a specific subject
+          * get_related_knowledge(keywords, limit) - Gets knowledge related to keywords
         
         Follow these best practices:
         - Include all necessary imports at the top
         - Handle potential missing dependencies with try/except blocks
         - Use proper error messages to indicate missing packages
         - For file operations, use 'with' statements and handle file not found errors
-        - Include comments explaining complex logic
+        - Use the knowledge database to store any valuable insights discovered during task execution
+        - Log important thoughts and decisions to the thinking log
         - Be sure main code starts at the left margin (column 0) with no leading whitespace
         
         Only provide the code that would replace the `{{main_code}}` part in the template.
