@@ -15,6 +15,9 @@ SynthepseAI Agent is an autonomous AI agent system with self-correction capabili
 - **Knowledge Editing (ROME)**: Directly edits the internal knowledge of language models to update facts and information.
 - **Self-Reflective Reasoning (COAT)**: Implements Chain-of-Action-Thought for improved reasoning and self-correction.
 - **Knowledge Graph Processing (R-GCN)**: Uses Relational Graph Convolutional Networks for sophisticated knowledge representation and retrieval.
+- **Robust Mock Mode**: Provides seamless operation even without API keys, enabling development and testing without external dependencies.
+- **Multi-level API Fallback**: Implements sophisticated fallback mechanisms for web search and LLM APIs to ensure continuous operation.
+- **Automatic Knowledge Graph Generation**: Creates and manages knowledge graphs automatically, eliminating the need for manual initialization.
 
 ## System Requirements
 
@@ -58,9 +61,13 @@ pip install -r requirements.txt
 ### 4. Configure Environment Variables
 Create a `.env` file and include the following:
 ```dotenv
+# OpenAI APIキー設定 (https://platform.openai.com/apikeys からAPIキーを取得)
 OPENAI_API_KEY=your_openai_api_key
+# 使用するOpenAIモデル（デフォルト: gpt-4-turbo）
 OPENAI_MODEL=gpt-4-turbo
 ```
+
+If you don't set an API key, the system will automatically run in mock mode, which simulates API responses for development and testing purposes.
 
 ### 5. Set Up Weaviate (for GraphRAG)
 ```bash
@@ -104,6 +111,18 @@ To use the web crawling functionality, you need to set up API keys for Tavily an
 ```
 
 The EnhancedPersistentThinkingAI will automatically use these APIs to search for information and integrate it into its knowledge base.
+
+#### Multi-level API Fallback Mechanism
+
+The system implements a sophisticated fallback mechanism for web search APIs:
+
+1. **Primary API**: Attempts to use Tavily API first with the latest SDK
+2. **Secondary API**: Falls back to legacy Tavily API if the latest SDK is unavailable
+3. **Tertiary API**: Falls back to direct Tavily API calls if the SDK has compatibility issues
+4. **Quaternary API**: Falls back to Firecrawl API if Tavily is completely unavailable
+5. **Mock Mode**: If no API keys are available, the system operates in mock mode, generating simulated search results
+
+This ensures continuous operation even when certain APIs are unavailable or experiencing issues.
 
 ### Enabling the Learning Feature
 
@@ -424,6 +443,8 @@ flowchart TD
 ### 7. LLLM Technologies
 - **EnhancedPersistentThinkingAI**: Advanced integration of ROME, COAT, and R-GCN for continuous thinking with background processing and web knowledge integration.
 - **WebCrawlingTool**: Tool for retrieving information from the web using Tavily and Firecrawl APIs.
+- **PersistentThinkingManager**: Manages continuous thought processes and knowledge updates, integrating with the knowledge database and thinking log to ensure comprehensive learning and reflection.
+- **Mock Mode Implementation**: Provides simulated responses for all AI components when API keys are unavailable, enabling development and testing without external dependencies.
 
 ## Workflow
 
@@ -449,6 +470,39 @@ SynthepseAI Agent incorporates two learning mechanisms:
 - **Module Extraction**: Extracts reusable code from successful tasks.
 - **Dependency Management**: Maintains dependencies between modules.
 - **Contextual Application**: Automatically incorporates relevant modules into new tasks.
+
+## Knowledge Graph Management
+
+The system uses a knowledge graph to represent and process information. The graph is stored in the `knowledge_graph.json` file and is managed by the `RGCNProcessor` class.
+
+### Automatic Knowledge Graph Generation
+
+The system now automatically initializes and manages the knowledge graph:
+
+- **Auto-creation**: If the knowledge graph file (`knowledge_graph.json`) doesn't exist, the system automatically creates an empty graph
+- **Initialization on Startup**: The knowledge graph is initialized during system startup, eliminating the need for manual setup
+- **Compatibility Mode**: The graph processor automatically detects the available libraries (DGL, PyTorch, NetworkX) and uses the most appropriate implementation
+- **Persistent Storage**: All knowledge graph updates are automatically saved to disk for future sessions
+
+## Script Template System
+
+The SynthepseAI system uses a sophisticated template system to generate task scripts that are executed in isolated environments. Recent improvements include:
+
+### PersistentThinkingManager Integration
+
+Task scripts now include a `PersistentThinkingManager` class that manages continuous thought processes and knowledge updates. This enables:
+
+- **Knowledge Database Integration**: Scripts can read from and write to the knowledge database (`knowledge_db.json`)
+- **Thinking Log Analysis**: Scripts can analyze and learn from the thinking log (`thinking_log.jsonl`)
+- **Confidence-based Knowledge Management**: Facts are stored with confidence levels, timestamps, and source information
+- **Continuous Learning**: Each task execution contributes to the system's growing knowledge base
+
+### Template Formatting Improvements
+
+- **Robust Error Handling**: Enhanced error handling in templates with proper escaping of f-strings and error messages
+- **Dynamic Dependency Detection**: Automatic detection and inclusion of required libraries in generated scripts
+- **Placeholder Management**: Improved handling of template placeholders to prevent unknown placeholder warnings
+- **Compatibility Fixes**: Templates now work correctly across different Python versions and environments
 
 ## Extending the System
 
@@ -502,6 +556,8 @@ FileNotFoundError: Cannot find DGL C++ graphbolt library
 1. 環境変数を設定: `export DGL_COMPATIBILITY_MODE=1`
 2. 提供されているスクリプトを実行: `source set_env.sh`
 3. main.pyでは既に`use_compatibility_mode=True`が設定されています
+
+**Python 3.12 Compatibility**: The system now automatically detects Python 3.12 and enables compatibility mode, as DGL does not yet fully support Python 3.12. This ensures seamless operation across different Python versions without manual configuration.
 
 #### SQLite Database Error
 ```
