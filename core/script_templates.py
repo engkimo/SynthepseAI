@@ -393,6 +393,9 @@ if __name__ == "__main__":
     # 念のため、テンプレート内の中括弧をエスケープ（f文字列内の中括弧のみ）
     template = template.replace("{{", "{{").replace("}}", "}}")
     
+    template = template.replace('f"Error: {str(e)}"', 'f"Error: {{str(e)}}"')
+    template = template.replace('f"エラー: {str(e)}"', 'f"エラー: {{str(e)}}"')
+    
     template = template.replace("{imports}", "{imports}")
     template = template.replace("{main_code}", "{main_code}")
     
