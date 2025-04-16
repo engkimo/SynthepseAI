@@ -1,13 +1,13 @@
 task_info = {
-    "task_id": "961f8fac-1cea-4b9e-8997-3da45c1419da",
-    "description": "Extract relevant information from the scraped data, focusing on reasons for the protests.",
-    "plan_id": "b53eb2be-f73b-4490-8e89-cc54a7adf126"
+    "task_id": "dc1e0ca4-01a9-4658-ab81-4368d8249ddc",
+    "description": "Collect historical data on Nankai Trough earthquakes from reliable sources online.",
+    "plan_id": "1b944fd6-2de5-4c4e-b27e-0efb5c09bdde"
     }
 
 task_info = {
-    "task_id": "961f8fac-1cea-4b9e-8997-3da45c1419da",
-    "description": "Extract relevant information from the scraped data, focusing on reasons for the protests.",
-    "plan_id": "b53eb2be-f73b-4490-8e89-cc54a7adf126",
+    "task_id": "dc1e0ca4-01a9-4658-ab81-4368d8249ddc",
+    "description": "Collect historical data on Nankai Trough earthquakes from reliable sources online.",
+    "plan_id": "1b944fd6-2de5-4c4e-b27e-0efb5c09bdde",
 }
 
 # 必要なライブラリのインポート
@@ -21,7 +21,7 @@ def main():
     try:
         # メイン処理
         # Replace # Main code with actual code
-        print("Executing main code...")
+        print("Running main code...")
     except Exception as e:
         print(f"Error: {str(e)}")
         return str(e)

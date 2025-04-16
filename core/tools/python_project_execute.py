@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from .base_tool import BaseTool, ToolResult
 from ..project_environment import ProjectEnvironment
 from ..task_database import TaskDatabase, Task, TaskStatus
+from ..script_templates import get_template_for_task
 
 class PythonProjectExecuteTool(BaseTool):
     """
@@ -105,11 +106,59 @@ class PythonProjectExecuteTool(BaseTool):
     "task_id": "{task.id}",
     "description": "{task.description}",
     "plan_id": "{task.plan_id}"
-    }}
+}}
+"""
+        
+        try:
+            required_libraries = self._detect_dependencies(task.code)
+            imports_str = "\n".join([f"import {lib}" for lib in required_libraries])
+            
+            template = get_template_for_task(task.description, required_libraries)
+            
+            indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
+            
+            if "{imports}" not in template or "{main_code}" not in template:
+                print("Warning: Template missing required placeholders. Using basic template.")
+                template = """
+{imports}
+
+def main():
+    try:
+{main_code}
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+"""
+            
+            formatted_code = template.format(
+                imports=imports_str,
+                main_code=indented_code
+            )
+        except KeyError as e:
+            print(f"Template formatting error: {str(e)}. Using basic template.")
+            formatted_code = f"""
+{imports_str}
+
+def main():
+    try:
+{indented_code}
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
 """
         
         # コードの先頭にタスク情報を追加
-        full_code = task_info_code + "\n" + task.code
+        full_code = task_info_code + "\n" + formatted_code
         
         # スクリプトを保存（自動フォーマット処理が適用される）
         print(f"Formatting and saving task script: {script_name}")

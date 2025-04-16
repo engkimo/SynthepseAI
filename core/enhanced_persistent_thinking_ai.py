@@ -67,6 +67,9 @@ class EnhancedPersistentThinkingAI:
         
         self.rgcn_processor = RGCNProcessor(device=device, use_compatibility_mode=self.use_compatibility_mode)
         
+        self.thinking_queue = Queue()
+        self._initialize_knowledge_graph()
+        
         self.task_db = TaskDatabase(":memory:")
         self.agent = AutoPlanAgent(
             name="PersistentThinkingAgent",
@@ -99,7 +102,31 @@ class EnhancedPersistentThinkingAI:
         
         self.thinking_thread = None
         self.stop_thinking = False
-        self.thinking_queue = Queue()
+    def _initialize_knowledge_graph(self):
+        """知識グラフを初期化（ファイルが存在しない場合は作成）"""
+        self.knowledge_triples = []
+        self.graph = None
+        
+        graph_file_path = "./knowledge_graph.json"
+        
+        if not os.path.exists(graph_file_path):
+            self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+            self.rgcn_processor.save_graph(graph_file_path)
+            print(f"初期知識グラフファイルを作成しました: {graph_file_path}")
+        else:
+            try:
+                self.graph = self.rgcn_processor.load_graph(graph_file_path)
+                if self.graph:
+                    print(f"知識グラフを読み込みました: {graph_file_path}")
+                else:
+                    print(f"知識グラフの読み込みに失敗しました。新しいグラフを作成します。")
+                    self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+                    self.rgcn_processor.save_graph(graph_file_path)
+            except Exception as e:
+                print(f"知識グラフの読み込み中にエラーが発生しました: {str(e)}")
+                print("新しいグラフを作成します。")
+                self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+                self.rgcn_processor.save_graph(graph_file_path)
     
     def _load_knowledge_db(self):
         """知識データベースを読み込み"""
@@ -169,6 +196,21 @@ class EnhancedPersistentThinkingAI:
     
     def _reflect_before_task(self, goal: str):
         """タスク実行前の自己反省"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            reflection = f"モックモード: タスク「{goal}」の実行前反省はスキップされました。実際のAPIコールは行われません。"
+            
+            self.thinking_state["reflections"].append({
+                "time": "before_task",
+                "content": reflection
+            })
+            
+            self._log_thought("pre_task_reflection", {
+                "goal": goal,
+                "reflection": reflection,
+                "mock_mode": True
+            })
+            return
+            
         prompt = f"""
         以下のタスクを実行する前に、これまでの知識や経験を振り返ってください：
         
@@ -202,6 +244,17 @@ class EnhancedPersistentThinkingAI:
     
     def _analyze_task_result(self, goal: str, result: str):
         """タスク実行結果を分析"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            analysis = f"モックモード: タスク「{goal}」の結果分析はスキップされました。実際のAPIコールは行われません。"
+            
+            self._log_thought("task_analysis", {
+                "goal": goal,
+                "result": result,
+                "analysis": analysis,
+                "mock_mode": True
+            })
+            return
+            
         prompt = f"""
         以下のタスクの実行結果を分析してください：
         
@@ -223,6 +276,32 @@ class EnhancedPersistentThinkingAI:
     
     def _extract_and_store_knowledge(self, goal: str, result: str):
         """新しい知識を抽出して保存"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            knowledge_json = """[
+                {"subject": "モックモード", "fact": "タスク実行中にモックモードが有効でした", "confidence": 1.0}
+            ]"""
+            
+            self._log_thought("knowledge_extraction", {
+                "goal": goal,
+                "result": result,
+                "knowledge": knowledge_json,
+                "mock_mode": True
+            })
+            
+            try:
+                import json
+                knowledge_items = json.loads(knowledge_json)
+                for item in knowledge_items:
+                    self.update_knowledge(
+                        item.get("subject", "モック主題"),
+                        item.get("fact", "モックデータ"),
+                        item.get("confidence", 0.8)
+                    )
+            except Exception as e:
+                print(f"モック知識抽出エラー: {str(e)}")
+                
+            return
+            
         prompt = f"""
         以下のタスクと結果から、将来のタスクに役立つ可能性のある知識を抽出してください：
         
@@ -290,6 +369,40 @@ class EnhancedPersistentThinkingAI:
     
     def _update_knowledge_graph(self, goal: str, result: str):
         """知識グラフを更新"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            triples_json = """[
+                {"subject": "モックモード", "relation": "実行中", "object": "タスク処理"},
+                {"subject": "タスク", "relation": "目標", "object": "知識グラフ更新"}
+            ]"""
+            
+            self._log_thought("knowledge_graph_update", {
+                "goal": goal,
+                "result": result,
+                "triples": triples_json,
+                "mock_mode": True
+            })
+            
+            try:
+                import json
+                triples_items = json.loads(triples_json)
+                new_triples = []
+                for item in triples_items:
+                    s = item.get("subject", "")
+                    r = item.get("relation", "")
+                    o = item.get("object", "")
+                    
+                    if s and r and o:
+                        new_triples.append((s, r, o))
+                        
+                if new_triples:
+                    self.knowledge_triples.extend(new_triples)
+                    self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+                    self.rgcn_processor.save_graph("./knowledge_graph.json")
+            except Exception as e:
+                print(f"モック知識グラフ更新エラー: {str(e)}")
+                
+            return
+            
         prompt = f"""
         以下のタスクと結果から、知識グラフのトリプル（主語、関係、目的語）を抽出してください：
         
@@ -344,6 +457,31 @@ class EnhancedPersistentThinkingAI:
     def _reflect_and_improve(self, goal: str, result: str):
         """自己反省と改善"""
         if not self.coat_reasoner:
+            return
+            
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            mock_reflection = {
+                "coat_chain": [
+                    {"action": "観察", "thought": f"タスク「{goal}」の結果を観察しています。"},
+                    {"action": "分析", "thought": "モックモードでは詳細な分析は行われません。"},
+                    {"action": "改善", "thought": "次回は実際のAPIキーを設定して実行することで改善できます。"}
+                ],
+                "final_solution": "モックモードでは限定的な自己反省のみ実行されました。"
+            }
+            
+            self.thinking_state["reflections"].append({
+                "time": "after_task",
+                "chain": mock_reflection.get("coat_chain", []),
+                "solution": mock_reflection.get("final_solution", ""),
+                "mock_mode": True
+            })
+            
+            self._log_thought("self_reflection", {
+                "goal": goal,
+                "reflection_task": "モックモードでの自己反省",
+                "coat_chain": mock_reflection,
+                "mock_mode": True
+            })
             return
             
         reflection_task = f"""
@@ -426,21 +564,49 @@ class EnhancedPersistentThinkingAI:
         
         while not self.stop_thinking:
             try:
-                new_task = self.thinking_queue.get_nowait()
-                current_task = new_task
-                print(f"新しいタスクを受け取りました: {current_task}")
-            except Empty:
-                pass
+                if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+                    print("モックモード: 継続的思考をシミュレート中...")
+                    self._log_thought("mock_thinking", {
+                        "timestamp": time.time(),
+                        "message": "モックモードでの継続的思考をシミュレート"
+                    })
+                    time.sleep(10)  # モックモードでは長めの間隔で実行
+                    continue
                 
-            if current_task:
-                self._think_about_current_task()
+                try:
+                    new_task = self.thinking_queue.get_nowait()
+                    current_task = new_task
+                    print(f"新しいタスクを受け取りました: {current_task}")
+                except Empty:
+                    pass
+                    
+                if current_task:
+                    try:
+                        self._think_about_current_task()
+                        
+                        if self._should_get_external_info():
+                            self._get_external_info(current_task)
+                    except Exception as e:
+                        print(f"タスク思考中にエラーが発生: {str(e)}")
+                        if "api key" in str(e).lower() or "auth" in str(e).lower():
+                            print("APIキーエラーを検出: モックモードに切り替えます")
+                            self.llm.mock_mode = True
+                else:
+                    try:
+                        self._think_about_knowledge()
+                    except Exception as e:
+                        print(f"知識思考中にエラーが発生: {str(e)}")
+                        if "api key" in str(e).lower() or "auth" in str(e).lower():
+                            print("APIキーエラーを検出: モックモードに切り替えます")
+                            self.llm.mock_mode = True
                 
-                if self._should_get_external_info():
-                    self._get_external_info(current_task)
-            else:
-                self._think_about_knowledge()
-                
-            time.sleep(2.0)
+                time.sleep(2.0)
+            except Exception as e:
+                print(f"継続的思考ループでエラーが発生: {str(e)}")
+                if "api key" in str(e).lower() or "auth" in str(e).lower():
+                    print("APIキーエラーを検出: モックモードに切り替えます")
+                    self.llm.mock_mode = True
+                time.sleep(5.0)  # エラー発生時は少し待機
     
     def _should_get_external_info(self):
         """外部情報を取得すべきかどうかを判断"""
@@ -464,6 +630,10 @@ class EnhancedPersistentThinkingAI:
     def _process_external_info(self, task, web_info):
         """取得した外部情報を処理"""
         if not web_info or not web_info.get("results"):
+            return
+            
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            print(f"モックモード: Web情報処理をスキップします。タスク: {task}")
             return
             
         results = web_info.get("results", [])
@@ -520,6 +690,23 @@ class EnhancedPersistentThinkingAI:
         """現在のタスクについて考える"""
         task = self.thinking_state["current_task"]
         
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            thought = "モックモード: 継続的思考は制限されています。実際のAPIコールは行われません。"
+            
+            self.thinking_state["reflections"].append({
+                "time": time.time(),
+                "content": thought
+            })
+            
+            self._log_thought("continuous_thinking", {
+                "task": task,
+                "thought": thought,
+                "mock_mode": True
+            })
+            
+            self.thinking_state["last_thought_time"] = time.time()
+            return
+        
         prompt = f"""
         現在取り組んでいるタスクについて、新たな視点や考え方はありますか？
         
@@ -554,6 +741,26 @@ class EnhancedPersistentThinkingAI:
             
         subjects = list(self.knowledge_db.keys())
         if not subjects:
+            return
+        
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            subject = random.choice(subjects) if subjects else "モックサブジェクト"
+            thought = "モックモード: 知識ベース考察は制限されています。実際のAPIコールは行われません。"
+            
+            self.thinking_state["reflections"].append({
+                "time": time.time(),
+                "subject": subject,
+                "content": thought
+            })
+            
+            self._log_thought("knowledge_reflection", {
+                "subject": subject,
+                "fact": "モックモード",
+                "thought": thought,
+                "mock_mode": True
+            })
+            
+            self.thinking_state["last_thought_time"] = time.time()
             return
             
         subject = random.choice(subjects)

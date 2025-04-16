@@ -1,13 +1,13 @@
 task_info = {
-    "task_id": "54ee2071-3831-4e72-92bd-c1504a6fa012",
-    "description": "Handle any potential errors or exceptions in the data fetching and parsing process",
-    "plan_id": "3c3b9d11-65e1-4fcf-9e26-ed83661dbea7"
+    "task_id": "e43585bb-c4dd-4f3b-8141-d80f72845432",
+    "description": "Parse and clean the collected earthquake data for analysis.",
+    "plan_id": "1b944fd6-2de5-4c4e-b27e-0efb5c09bdde"
     }
 
 task_info = {
-    "task_id": "54ee2071-3831-4e72-92bd-c1504a6fa012",
-    "description": "Handle any potential errors or exceptions in the data fetching and parsing process",
-    "plan_id": "3c3b9d11-65e1-4fcf-9e26-ed83661dbea7",
+    "task_id": "e43585bb-c4dd-4f3b-8141-d80f72845432",
+    "description": "Parse and clean the collected earthquake data for analysis.",
+    "plan_id": "1b944fd6-2de5-4c4e-b27e-0efb5c09bdde",
 }
 
 # 必要なライブラリのインポート
@@ -19,7 +19,7 @@ def main():
     try:
         # メイン処理
         # Example main code, replace with actual code needed
-        print("Running main process...")
+        print("Running main code...")
     except Exception as e:
         print(f"Error: {str(e)}")
         return str(e)

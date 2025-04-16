@@ -543,9 +543,6 @@ class ProjectEnvironment:
             task_info_match = re.search(task_info_pattern, code)
             task_info_code = task_info_match.group(0) if task_info_match else None
             
-            # プレースホルダーの置換（先に行う）
-            code = code.replace("{imports}", "# Imports")
-            code = code.replace("{main_code}", "# Main code")
             
             # 一時ファイルにコードを書き込む
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.py', delete=False) as temp_file:
@@ -610,5 +607,4 @@ class ProjectEnvironment:
             return formatted_code
         except Exception as e:
             print(f"Error formatting code: {str(e)}")
-            # エラーが発生した場合は元のコードを返す（プレースホルダーだけ置換）
-            return code.replace("{imports}", "# Imports").replace("{main_code}", "# Main code")
+            return code
