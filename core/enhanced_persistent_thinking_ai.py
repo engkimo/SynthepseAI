@@ -564,21 +564,49 @@ class EnhancedPersistentThinkingAI:
         
         while not self.stop_thinking:
             try:
-                new_task = self.thinking_queue.get_nowait()
-                current_task = new_task
-                print(f"新しいタスクを受け取りました: {current_task}")
-            except Empty:
-                pass
+                if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+                    print("モックモード: 継続的思考をシミュレート中...")
+                    self._log_thought("mock_thinking", {
+                        "timestamp": time.time(),
+                        "message": "モックモードでの継続的思考をシミュレート"
+                    })
+                    time.sleep(10)  # モックモードでは長めの間隔で実行
+                    continue
                 
-            if current_task:
-                self._think_about_current_task()
+                try:
+                    new_task = self.thinking_queue.get_nowait()
+                    current_task = new_task
+                    print(f"新しいタスクを受け取りました: {current_task}")
+                except Empty:
+                    pass
+                    
+                if current_task:
+                    try:
+                        self._think_about_current_task()
+                        
+                        if self._should_get_external_info():
+                            self._get_external_info(current_task)
+                    except Exception as e:
+                        print(f"タスク思考中にエラーが発生: {str(e)}")
+                        if "api key" in str(e).lower() or "auth" in str(e).lower():
+                            print("APIキーエラーを検出: モックモードに切り替えます")
+                            self.llm.mock_mode = True
+                else:
+                    try:
+                        self._think_about_knowledge()
+                    except Exception as e:
+                        print(f"知識思考中にエラーが発生: {str(e)}")
+                        if "api key" in str(e).lower() or "auth" in str(e).lower():
+                            print("APIキーエラーを検出: モックモードに切り替えます")
+                            self.llm.mock_mode = True
                 
-                if self._should_get_external_info():
-                    self._get_external_info(current_task)
-            else:
-                self._think_about_knowledge()
-                
-            time.sleep(2.0)
+                time.sleep(2.0)
+            except Exception as e:
+                print(f"継続的思考ループでエラーが発生: {str(e)}")
+                if "api key" in str(e).lower() or "auth" in str(e).lower():
+                    print("APIキーエラーを検出: モックモードに切り替えます")
+                    self.llm.mock_mode = True
+                time.sleep(5.0)  # エラー発生時は少し待機
     
     def _should_get_external_info(self):
         """外部情報を取得すべきかどうかを判断"""
