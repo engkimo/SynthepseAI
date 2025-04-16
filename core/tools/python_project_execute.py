@@ -109,17 +109,53 @@ class PythonProjectExecuteTool(BaseTool):
 }}
 """
         
-        required_libraries = self._detect_dependencies(task.code)
-        imports_str = "\n".join([f"import {lib}" for lib in required_libraries])
-        
-        template = get_template_for_task(task.description, required_libraries)
-        
-        indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
-        
-        formatted_code = template.format(
-            imports=imports_str,
-            main_code=indented_code
-        )
+        try:
+            required_libraries = self._detect_dependencies(task.code)
+            imports_str = "\n".join([f"import {lib}" for lib in required_libraries])
+            
+            template = get_template_for_task(task.description, required_libraries)
+            
+            indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
+            
+            if "{imports}" not in template or "{main_code}" not in template:
+                print("Warning: Template missing required placeholders. Using basic template.")
+                template = """
+{imports}
+
+def main():
+    try:
+{main_code}
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+"""
+            
+            formatted_code = template.format(
+                imports=imports_str,
+                main_code=indented_code
+            )
+        except KeyError as e:
+            print(f"Template formatting error: {str(e)}. Using basic template.")
+            formatted_code = f"""
+{imports_str}
+
+def main():
+    try:
+{indented_code}
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+"""
         
         # コードの先頭にタスク情報を追加
         full_code = task_info_code + "\n" + formatted_code
