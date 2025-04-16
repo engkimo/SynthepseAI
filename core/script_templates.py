@@ -601,6 +601,8 @@ def get_template_for_task(task_description, required_libraries=None):
     template = re.sub(r'{self\.([^}]*)}', r'{{self.\1}}', template)
     template = re.sub(r'{task_description}', r'{{task_description}}', template)
     template = re.sub(r'{missing_module}', r'{{missing_module}}', template)
+    template = re.sub(r'{str\(e\)}', r'{{str(e)}}', template)
+    template = re.sub(r'{type\(e\)\.__name__}', r'{{type(e).__name__}}', template)
     
     for pattern, replacement in f_string_patterns:
         template = template.replace(pattern, replacement)
