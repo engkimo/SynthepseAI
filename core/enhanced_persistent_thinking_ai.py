@@ -67,6 +67,7 @@ class EnhancedPersistentThinkingAI:
         
         self.rgcn_processor = RGCNProcessor(device=device, use_compatibility_mode=self.use_compatibility_mode)
         
+        self.thinking_queue = Queue()
         self._initialize_knowledge_graph()
         
         self.task_db = TaskDatabase(":memory:")
@@ -112,8 +113,20 @@ class EnhancedPersistentThinkingAI:
             self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
             self.rgcn_processor.save_graph(graph_file_path)
             print(f"初期知識グラフファイルを作成しました: {graph_file_path}")
-
-        self.thinking_queue = Queue()
+        else:
+            try:
+                self.graph = self.rgcn_processor.load_graph(graph_file_path)
+                if self.graph:
+                    print(f"知識グラフを読み込みました: {graph_file_path}")
+                else:
+                    print(f"知識グラフの読み込みに失敗しました。新しいグラフを作成します。")
+                    self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+                    self.rgcn_processor.save_graph(graph_file_path)
+            except Exception as e:
+                print(f"知識グラフの読み込み中にエラーが発生しました: {str(e)}")
+                print("新しいグラフを作成します。")
+                self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+                self.rgcn_processor.save_graph(graph_file_path)
     
     def _load_knowledge_db(self):
         """知識データベースを読み込み"""
