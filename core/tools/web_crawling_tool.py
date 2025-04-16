@@ -81,21 +81,44 @@ class WebCrawlingTool(BaseTool):
                 }
                 
                 response = client.search(**search_params)
-            except (ImportError, AttributeError):
-                import tavily
-                
-                search_params = {
-                    "api_key": self.tavily_api_key,
-                    "query": query,
-                    "search_depth": search_depth,
-                    "max_results": self.max_results,
-                }
-                
-                response = tavily.search(**search_params)
+                print(f"Tavily検索成功: {query}")
+            except (ImportError, AttributeError) as e:
+                print(f"最新のTavily SDKが利用できません: {str(e)}。レガシーAPIを試行します。")
+                try:
+                    import tavily
+                    tavily.api_key = self.tavily_api_key
+                    
+                    search_params = {
+                        "query": query,
+                        "search_depth": search_depth,
+                        "max_results": self.max_results,
+                    }
+                    
+                    response = tavily.search(**search_params)
+                    print(f"Tavilyレガシー検索成功: {query}")
+                except AttributeError:
+                    import requests
+                    
+                    api_url = "https://api.tavily.com/search"
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.tavily_api_key}"
+                    }
+                    
+                    data = {
+                        "query": query,
+                        "search_depth": search_depth,
+                        "max_results": self.max_results
+                    }
+                    
+                    response_raw = requests.post(api_url, headers=headers, json=data)
+                    response_raw.raise_for_status()
+                    response = response_raw.json()
+                    print(f"Tavily直接API呼び出し成功: {query}")
         except ImportError:
-            return ToolResult(False, error="tavily-pythonパッケージがインストールされていません。pip install tavily-python を実行してください。")
+            return ToolResult(False, None, "tavily-pythonパッケージがインストールされていません。pip install tavily-python を実行してください。")
         except Exception as e:
-            return ToolResult(False, error=f"Tavily検索エラー: {str(e)}")
+            return ToolResult(False, None, f"Tavily検索エラー: {str(e)}")
         
         results = []
         for result in response.get("results", []):
