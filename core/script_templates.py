@@ -25,7 +25,7 @@ def main():
         # その他のエラー処理
         import traceback
         error_details = traceback.format_exc()
-        result = f"エラー: {{str(e)}}"
+        result = f"エラー: {str(e)}"
         print(result)
         print(error_details)
         return result
@@ -70,7 +70,7 @@ def main():
         # エラー処理
         import traceback
         error_details = traceback.format_exc()
-        result = f"エラー: {{str(e)}}"
+        result = f"エラー: {str(e)}"
         print(result)
         print(error_details)
         return result
@@ -110,7 +110,7 @@ def main():
         # エラー処理
         import traceback
         error_details = traceback.format_exc()
-        result = f"エラー: {{str(e)}}"
+        result = f"エラー: {str(e)}"
         print(result)
         print(error_details)
         return result
@@ -277,7 +277,7 @@ def main():
         
         update_knowledge(
             f"エラーパターン: {type(e).__name__}",
-            f"タスク「{task_info}」で発生: {str(e)}",
+            f"タスク実行中に発生: {str(e)}",
             confidence=0.7
         )
         
@@ -380,7 +380,7 @@ def main():
         # メイン処理
 {main_code}
     except Exception as e:
-        print(f"Error: {{str(e)}}")
+        print(f"Error: {str(e)}")
         return str(e)
     
     return "Task completed successfully"
@@ -391,7 +391,9 @@ if __name__ == "__main__":
 """
     
     # 念のため、テンプレート内の中括弧をエスケープ（f文字列内の中括弧のみ）
-    template = re.sub(r'f"([^"]*){([^{}]*)}([^"]*)"', r'f"\1{{\2}}\3"', template)
-    template = re.sub(r"f'([^']*){([^{}]*)}([^']*)'", r"f'\1{{\2}}\3'", template)
+    template = template.replace("{{", "{{").replace("}}", "}}")
+    
+    template = template.replace("{imports}", "{imports}")
+    template = template.replace("{main_code}", "{main_code}")
     
     return template
