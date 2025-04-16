@@ -183,6 +183,21 @@ class EnhancedPersistentThinkingAI:
     
     def _reflect_before_task(self, goal: str):
         """タスク実行前の自己反省"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            reflection = f"モックモード: タスク「{goal}」の実行前反省はスキップされました。実際のAPIコールは行われません。"
+            
+            self.thinking_state["reflections"].append({
+                "time": "before_task",
+                "content": reflection
+            })
+            
+            self._log_thought("pre_task_reflection", {
+                "goal": goal,
+                "reflection": reflection,
+                "mock_mode": True
+            })
+            return
+            
         prompt = f"""
         以下のタスクを実行する前に、これまでの知識や経験を振り返ってください：
         
@@ -216,6 +231,17 @@ class EnhancedPersistentThinkingAI:
     
     def _analyze_task_result(self, goal: str, result: str):
         """タスク実行結果を分析"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            analysis = f"モックモード: タスク「{goal}」の結果分析はスキップされました。実際のAPIコールは行われません。"
+            
+            self._log_thought("task_analysis", {
+                "goal": goal,
+                "result": result,
+                "analysis": analysis,
+                "mock_mode": True
+            })
+            return
+            
         prompt = f"""
         以下のタスクの実行結果を分析してください：
         
@@ -237,6 +263,32 @@ class EnhancedPersistentThinkingAI:
     
     def _extract_and_store_knowledge(self, goal: str, result: str):
         """新しい知識を抽出して保存"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            knowledge_json = """[
+                {"subject": "モックモード", "fact": "タスク実行中にモックモードが有効でした", "confidence": 1.0}
+            ]"""
+            
+            self._log_thought("knowledge_extraction", {
+                "goal": goal,
+                "result": result,
+                "knowledge": knowledge_json,
+                "mock_mode": True
+            })
+            
+            try:
+                import json
+                knowledge_items = json.loads(knowledge_json)
+                for item in knowledge_items:
+                    self.update_knowledge(
+                        item.get("subject", "モック主題"),
+                        item.get("fact", "モックデータ"),
+                        item.get("confidence", 0.8)
+                    )
+            except Exception as e:
+                print(f"モック知識抽出エラー: {str(e)}")
+                
+            return
+            
         prompt = f"""
         以下のタスクと結果から、将来のタスクに役立つ可能性のある知識を抽出してください：
         
@@ -304,6 +356,40 @@ class EnhancedPersistentThinkingAI:
     
     def _update_knowledge_graph(self, goal: str, result: str):
         """知識グラフを更新"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            triples_json = """[
+                {"subject": "モックモード", "relation": "実行中", "object": "タスク処理"},
+                {"subject": "タスク", "relation": "目標", "object": "知識グラフ更新"}
+            ]"""
+            
+            self._log_thought("knowledge_graph_update", {
+                "goal": goal,
+                "result": result,
+                "triples": triples_json,
+                "mock_mode": True
+            })
+            
+            try:
+                import json
+                triples_items = json.loads(triples_json)
+                new_triples = []
+                for item in triples_items:
+                    s = item.get("subject", "")
+                    r = item.get("relation", "")
+                    o = item.get("object", "")
+                    
+                    if s and r and o:
+                        new_triples.append((s, r, o))
+                        
+                if new_triples:
+                    self.knowledge_triples.extend(new_triples)
+                    self.graph = self.rgcn_processor.build_graph(self.knowledge_triples)
+                    self.rgcn_processor.save_graph("./knowledge_graph.json")
+            except Exception as e:
+                print(f"モック知識グラフ更新エラー: {str(e)}")
+                
+            return
+            
         prompt = f"""
         以下のタスクと結果から、知識グラフのトリプル（主語、関係、目的語）を抽出してください：
         
@@ -358,6 +444,31 @@ class EnhancedPersistentThinkingAI:
     def _reflect_and_improve(self, goal: str, result: str):
         """自己反省と改善"""
         if not self.coat_reasoner:
+            return
+            
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            mock_reflection = {
+                "coat_chain": [
+                    {"action": "観察", "thought": f"タスク「{goal}」の結果を観察しています。"},
+                    {"action": "分析", "thought": "モックモードでは詳細な分析は行われません。"},
+                    {"action": "改善", "thought": "次回は実際のAPIキーを設定して実行することで改善できます。"}
+                ],
+                "final_solution": "モックモードでは限定的な自己反省のみ実行されました。"
+            }
+            
+            self.thinking_state["reflections"].append({
+                "time": "after_task",
+                "chain": mock_reflection.get("coat_chain", []),
+                "solution": mock_reflection.get("final_solution", ""),
+                "mock_mode": True
+            })
+            
+            self._log_thought("self_reflection", {
+                "goal": goal,
+                "reflection_task": "モックモードでの自己反省",
+                "coat_chain": mock_reflection,
+                "mock_mode": True
+            })
             return
             
         reflection_task = f"""
