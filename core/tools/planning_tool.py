@@ -322,6 +322,43 @@ class PlanningTool(BaseTool):
         # スクリプトテンプレートを取得
         template = get_template_for_task(task.description)
         
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            print(f"モックモード: タスク「{task.description}」用のスクリプトを生成します")
+            
+            task_info_code = f"""task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id}",
+}}
+"""
+            
+            mock_main_code = self.llm.generate_code(f"タスク: {task.description}")
+            
+            # インポート文を抽出
+            import re
+            import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
+            imports = re.findall(import_pattern, mock_main_code)
+            imports_text = "\n".join(imports) if imports else "# No additional imports"
+            
+            # メインコードからインポート文を削除
+            main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
+            
+            # 安全なテンプレート置換のためのディクショナリを作成
+            format_dict = {
+                "imports": imports_text,
+                "main_code": main_code_cleaned,
+            }
+            
+            try:
+                # 安全なフォーマット処理
+                from string import Template
+                t = Template(template)
+                full_code = task_info_code + t.safe_substitute(format_dict)
+                return full_code
+            except Exception as e:
+                print(f"Error formatting template in mock mode: {str(e)}")
+                return task_info_code + mock_main_code
+        
         # 学習ベースの強化
         learning_insights = ""
         if self.graph_rag:
@@ -477,6 +514,13 @@ class PlanningTool(BaseTool):
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
         
+        task_info_code = f"""task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id}",
+}}
+"""
+        
         # 安全なテンプレート置換のためのディクショナリを作成
         format_dict = {
             "imports": imports_text,
@@ -487,7 +531,7 @@ class PlanningTool(BaseTool):
             # 安全なフォーマット処理
             from string import Template
             t = Template(template)
-            full_code = t.safe_substitute(format_dict)
+            full_code = task_info_code + t.safe_substitute(format_dict)
             return full_code
         except Exception as e:
             print(f"Error formatting template: {str(e)}")
@@ -510,7 +554,7 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
-            return fallback_template.format(**format_dict)
+            return task_info_code + fallback_template.format(**format_dict)
     
     def generate_python_script_with_modules(self, task, modules: List[Dict]) -> str:
         """再利用可能なモジュールを活用してPythonスクリプトを生成"""
@@ -531,6 +575,54 @@ if __name__ == "__main__":
         
         # スクリプトテンプレートを取得
         template = get_template_for_task(task.description)
+        
+        task_info_code = f"""task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id}",
+}}
+"""
+        
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            print(f"モックモード: モジュール付きタスク「{task.description}」用のスクリプトを生成します")
+            
+            # モジュール情報をプロンプトに整形
+            modules_info = "\n\n".join([
+                f"Module: {module['name']}\nDescription: {module['description']}\n```python\n{module['code']}\n```"
+                for module in modules[:3]  # 最大3つのモジュールを使用
+            ])
+            
+            mock_main_code = self.llm.generate_code(f"""
+            タスク: {task.description}
+            
+            利用可能なモジュール:
+            {modules_info}
+            """)
+            
+            # インポート文を抽出
+            import re
+            import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
+            imports = re.findall(import_pattern, mock_main_code)
+            imports_text = "\n".join(imports) if imports else "# No additional imports"
+            
+            # メインコードからインポート文を削除
+            main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
+            
+            # 安全なテンプレート置換のためのディクショナリを作成
+            format_dict = {
+                "imports": imports_text,
+                "main_code": main_code_cleaned,
+            }
+            
+            try:
+                # 安全なフォーマット処理
+                from string import Template
+                t = Template(template)
+                full_code = task_info_code + t.safe_substitute(format_dict)
+                return full_code
+            except Exception as e:
+                print(f"Error formatting template in mock mode: {str(e)}")
+                return task_info_code + mock_main_code
         
         # モジュール情報をプロンプトに整形
         modules_info = "\n\n".join([
@@ -615,6 +707,11 @@ if __name__ == "__main__":
         3. Store the final result in a variable called 'result'
         4. Include appropriate error handling
         5. Use the knowledge database and thinking log functions provided in the template
+        6. Actively contribute to the continuous learning system by:
+           - Logging important thoughts and decisions
+           - Updating the knowledge database with new insights
+           - Retrieving and building upon existing knowledge
+           - Testing hypotheses and recording results
         
         IMPORTANT: 
         - Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
@@ -634,6 +731,11 @@ if __name__ == "__main__":
         - Use the knowledge database to store any valuable insights discovered during task execution
         - Log important thoughts and decisions to the thinking log
         - Be sure main code starts at the left margin (column 0) with no leading whitespace
+        - Implement a research-oriented approach:
+          * Formulate hypotheses based on existing knowledge
+          * Test hypotheses through data analysis or information gathering
+          * Record results and update knowledge accordingly
+          * Consider alternative explanations and approaches
         
         Only provide the code that would replace the `{{main_code}}` part in the template.
         Do not include the template structure, as it will be added automatically.
@@ -661,7 +763,7 @@ if __name__ == "__main__":
             # 安全なフォーマット処理
             from string import Template
             t = Template(template)
-            full_code = t.safe_substitute(format_dict)
+            full_code = task_info_code + t.safe_substitute(format_dict)
             return full_code
         except Exception as e:
             print(f"Error formatting template: {str(e)}")
@@ -684,7 +786,7 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
-            return fallback_template.format(**format_dict)
+            return task_info_code + fallback_template.format(**format_dict)
     
     def _check_imports(self, code: str) -> List[str]:
         """コード内のインポートステートメントから不足モジュールを検出"""
