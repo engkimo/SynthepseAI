@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from .base_tool import BaseTool, ToolResult
 from ..project_environment import ProjectEnvironment
 from ..task_database import TaskDatabase, Task, TaskStatus
+from ..script_templates import get_template_for_task
 
 class PythonProjectExecuteTool(BaseTool):
     """
@@ -105,11 +106,23 @@ class PythonProjectExecuteTool(BaseTool):
     "task_id": "{task.id}",
     "description": "{task.description}",
     "plan_id": "{task.plan_id}"
-    }}
+}}
 """
         
+        required_libraries = self._detect_dependencies(task.code)
+        imports_str = "\n".join([f"import {lib}" for lib in required_libraries])
+        
+        template = get_template_for_task(task.description, required_libraries)
+        
+        indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
+        
+        formatted_code = template.format(
+            imports=imports_str,
+            main_code=indented_code
+        )
+        
         # コードの先頭にタスク情報を追加
-        full_code = task_info_code + "\n" + task.code
+        full_code = task_info_code + "\n" + formatted_code
         
         # スクリプトを保存（自動フォーマット処理が適用される）
         print(f"Formatting and saving task script: {script_name}")
