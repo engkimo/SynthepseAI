@@ -291,6 +291,7 @@ if __name__ == "__main__":
 def get_template_for_task(task_description, required_libraries=None):
     """
     タスクの説明に基づいて適切なテンプレートを選択
+    常にPERSISTENT_THINKING_TEMPLATEを使用し、タスクタイプのみを記録
     
     Args:
         task_description (str): タスクの説明
@@ -314,10 +315,15 @@ def get_template_for_task(task_description, required_libraries=None):
         'bs4', 'ウェブ', 'サイト', 'site', 'url', 'http'
     ]
     
-    persistent_thinking_keywords = [
+    knowledge_thinking_keywords = [
         '知識', '学習', 'knowledge', 'learning', '思考', 'thinking', '継続学習',
         '自己改善', 'self-improvement', '知識ベース', 'knowledge base', '記憶',
         'memory', '持続', 'persistent', '連携', 'integration', '知識グラフ'
+    ]
+    
+    research_keywords = [
+        '検索', 'search', '調査', 'research', '情報収集', 'information gathering',
+        '分析', 'analysis', '評価', 'evaluation', '比較', 'comparison'
     ]
     
     template = PERSISTENT_THINKING_TEMPLATE
@@ -327,6 +333,10 @@ def get_template_for_task(task_description, required_libraries=None):
         task_type = "data_analysis"
     elif any(keyword in task_lower for keyword in web_scraping_keywords):
         task_type = "web_scraping"
+    elif any(keyword in task_lower for keyword in knowledge_thinking_keywords):
+        task_type = "knowledge_thinking"
+    elif any(keyword in task_lower for keyword in research_keywords):
+        task_type = "research"
     
     try:
         import time
@@ -341,7 +351,9 @@ def get_template_for_task(task_description, required_libraries=None):
                     "type": "template_selection",
                     "content": {
                         "task_description": task_description,
-                        "selected_template_type": task_type
+                        "selected_template_type": task_type,
+                        "template": "PERSISTENT_THINKING_TEMPLATE",
+                        "required_libraries": required_libraries
                     }
                 }
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
