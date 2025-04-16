@@ -2,7 +2,7 @@
 
 ## Overview
 
-SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on an extended version of the manus architecture and incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience. The system now implements the LLLM (Larger LLM) concept, integrating multiple technologies to create an intelligent ecosystem.
+SynthepseAI Agent is an autonomous AI agent system with self-correction capabilities. Simply by setting a goal, the agent automatically plans and executes tasks while learning from and correcting errors to achieve the objective. It is built on incorporates a learning system utilizing GraphRAG, enabling continuous improvement based on experience. The system now implements the LLLM (Larger LLM) concept, integrating multiple technologies to create an intelligent ecosystem.
 
 ### Key Features
 
