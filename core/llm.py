@@ -75,21 +75,28 @@ import datetime
 
 task_description = task_info.get("description", "Unknown task")
 
-related_knowledge = get_related_knowledge([word for word in task_description.split() if len(word) > 3], 3)
-if related_knowledge:
-    log_thought("task_start", {
+try:
+    related_knowledge = get_related_knowledge([word for word in task_description.split() if len(word) > 3], 3)
+    if related_knowledge:
+        log_thought("task_start", {
+            "task": task_description,
+            "related_knowledge_found": len(related_knowledge)
+        })
+        
+        for knowledge in related_knowledge:
+            print(f"関連知識: {knowledge['subject']} - {knowledge['fact']}")
+    else:
+        log_thought("task_start", {
+            "task": task_description,
+            "related_knowledge_found": 0
+        })
+        print("このタスクに関連する既存の知識は見つかりませんでした。")
+except Exception as e:
+    print(f"知識ベース検索エラー: {str(e)}")
+    log_thought("knowledge_search_error", {
         "task": task_description,
-        "related_knowledge_found": len(related_knowledge)
+        "error": str(e)
     })
-    
-    for knowledge in related_knowledge:
-        print(f"関連知識: {knowledge['subject']} - {knowledge['fact']}")
-else:
-    log_thought("task_start", {
-        "task": task_description,
-        "related_knowledge_found": 0
-    })
-    print("このタスクに関連する既存の知識は見つかりませんでした。")
 
 try:
     print(f"タスク「{task_description}」を実行中...")
