@@ -2,8 +2,13 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 import json
 import os
 import time
+import sys
 
-DGL_COMPATIBILITY_MODE = os.environ.get('DGL_COMPATIBILITY_MODE', '0') == '1'
+python_version = sys.version_info
+DGL_COMPATIBILITY_MODE = (
+    os.environ.get('DGL_COMPATIBILITY_MODE', '0').lower() in ['1', 'true', 'yes', 'on'] or
+    (python_version.major == 3 and python_version.minor >= 12)
+)
 
 if not DGL_COMPATIBILITY_MODE:
     try:
@@ -13,9 +18,11 @@ if not DGL_COMPATIBILITY_MODE:
         import dgl
         from dgl.nn.pytorch import RelGraphConv
         TORCH_DGL_AVAILABLE = True
-    except ImportError:
-        print("PyTorch or DGL not available. R-GCN functionality will be limited.")
+        print(f"ROME using device: {torch.device('cuda' if torch.cuda.is_available() else 'mps' if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available() else 'cpu')}")
+    except ImportError as e:
+        print(f"Error importing DGL: {str(e)}")
         TORCH_DGL_AVAILABLE = False
+        print("R-GCN running in compatibility mode (PyTorch/DGL not available)")
         
         try:
             import networkx as nx
@@ -26,6 +33,7 @@ if not DGL_COMPATIBILITY_MODE:
     except Exception as e:
         print(f"Error importing DGL: {str(e)}")
         TORCH_DGL_AVAILABLE = False
+        print("R-GCN running in compatibility mode (forced by user or environment variable)")
         
         try:
             import networkx as nx
@@ -34,7 +42,7 @@ if not DGL_COMPATIBILITY_MODE:
             print("NetworkX not available. Using basic graph implementation.")
             NX_AVAILABLE = False
 else:
-    print("DGL compatibility mode enabled via environment variable. Using basic implementation.")
+    print("R-GCN running in compatibility mode (forced by user or environment variable)")
     TORCH_DGL_AVAILABLE = False
     
     try:
