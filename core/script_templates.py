@@ -583,14 +583,39 @@ def get_template_for_task(task_description, required_libraries=None):
     
     # テンプレート内のプレースホルダーを検証
     import re
-    placeholders = re.findall(r'{([^{}]*)}', template)
     
-    # 基本的なプレースホルダー
-    required_placeholders = {"imports", "main_code"}
+    # 念のため、テンプレート内の中括弧をエスケープ（f文字列内の中括弧のみ）
+    template = template.replace("{{", "{{").replace("}}", "}}")
     
-    # 不明なプレースホルダーがある場合は修正
-    if set(placeholders) - required_placeholders:
-        print(f"Warning: Template has unknown placeholders. Using basic template.")
+    f_string_patterns = [
+        ('f"Error: {str(e)}"', 'f"Error: {{str(e)}}"'),
+        ('f"エラー: {str(e)}"', 'f"エラー: {{str(e)}}"'),
+        ('f"', 'f"'),
+        ('{str(e)}', '{{str(e)}}'),
+        ('{e}', '{{e}}'),
+        ('{type(e).__name__}', '{{type(e).__name__}}'),
+        ('{result=}', '{{result=}}'),
+        ('{val=}', '{{val=}}')
+    ]
+    
+    for pattern, replacement in f_string_patterns:
+        template = template.replace(pattern, replacement)
+    
+    template = template.replace("{imports}", "##IMPORTS##")
+    template = template.replace("{main_code}", "##MAIN_CODE##")
+    
+    remaining_placeholders = re.findall(r'{([^{}]*)}', template)
+    
+    if remaining_placeholders:
+        print(f"Warning: Escaping remaining placeholders: {remaining_placeholders}")
+        for placeholder in remaining_placeholders:
+            template = template.replace(f"{{{placeholder}}}", f"{{{{{placeholder}}}}}")
+    
+    template = template.replace("##IMPORTS##", "{imports}")
+    template = template.replace("##MAIN_CODE##", "{main_code}")
+    
+    if "{imports}" not in template or "{main_code}" not in template:
+        print(f"Warning: Template missing required placeholders. Using basic template.")
         # 基本テンプレートを使用（インデントに注意）
         template = """
 # 必要なライブラリのインポート
@@ -601,7 +626,7 @@ def main():
         # メイン処理
 {main_code}
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {{str(e)}}")
         return str(e)
     
     return "Task completed successfully"
@@ -610,14 +635,5 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
-    
-    # 念のため、テンプレート内の中括弧をエスケープ（f文字列内の中括弧のみ）
-    template = template.replace("{{", "{{").replace("}}", "}}")
-    
-    template = template.replace('f"Error: {str(e)}"', 'f"Error: {{str(e)}}"')
-    template = template.replace('f"エラー: {str(e)}"', 'f"エラー: {{str(e)}}"')
-    
-    template = template.replace("{imports}", "{imports}")
-    template = template.replace("{main_code}", "{main_code}")
     
     return template
