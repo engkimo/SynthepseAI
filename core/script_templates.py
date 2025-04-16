@@ -341,6 +341,62 @@ class PersistentThinkingManager:
                 "conclusion": conclusion
             })
     
+    def verify_hypothesis_with_simulation(self, hypothesis: str, simulation_code: str) -> Dict[str, Any]:
+        """仮説をシミュレーションで検証する
+        
+        Args:
+            hypothesis: 検証する仮説
+            simulation_code: シミュレーションに使用するPythonコード
+            
+        Returns:
+            Dict: 検証結果を含む辞書
+        """
+        result = {
+            "hypothesis": hypothesis,
+            "verified": False,
+            "confidence": 0.0,
+            "evidence": [],
+            "timestamp": time.time()
+        }
+        
+        try:
+            local_vars = {}
+            exec(simulation_code, {"__builtins__": __builtins__}, local_vars)
+            
+            simulation_result = local_vars.get("result", None)
+            
+            if simulation_result:
+                result["simulation_result"] = str(simulation_result)
+                result["verified"] = local_vars.get("verified", False)
+                result["confidence"] = local_vars.get("confidence", 0.5)
+                result["evidence"] = local_vars.get("evidence", [])
+                
+                self.log_thought("hypothesis_simulation", {
+                    "task": self.task_description,
+                    "hypothesis": hypothesis,
+                    "verified": result["verified"],
+                    "confidence": result["confidence"],
+                    "evidence": result["evidence"]
+                })
+                
+                self.verification_results = getattr(self, "verification_results", [])
+                self.verification_results.append(result)
+                
+                if result["verified"] and result["confidence"] > 0.7:
+                    subject = f"検証済み仮説: {hypothesis[:50]}..."
+                    fact = f"検証結果: {result['simulation_result']}"
+                    self.update_knowledge(subject, fact, result["confidence"], "hypothesis_simulation")
+        except Exception as e:
+            result["error"] = str(e)
+            result["traceback"] = traceback.format_exc()
+            self.log_thought("hypothesis_simulation_error", {
+                "task": self.task_description,
+                "hypothesis": hypothesis,
+                "error": str(e)
+            })
+            
+        return result
+    
     def add_conclusion(self, conclusion: str, confidence: float = 0.8) -> None:
         """タスクの結論を追加"""
         self.conclusions.append({

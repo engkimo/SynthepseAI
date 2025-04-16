@@ -36,7 +36,9 @@ class EnhancedPersistentThinkingAI:
         log_path: str = "./thinking_log.jsonl",
         use_compatibility_mode: bool = False,
         tavily_api_key: Optional[str] = None,
-        firecrawl_api_key: Optional[str] = None
+        firecrawl_api_key: Optional[str] = None,
+        enable_multi_agent: bool = False,
+        specialized_agents: Optional[List[Dict[str, Any]]] = None
     ):
         """
         強化版持続思考型AIの初期化
@@ -83,6 +85,24 @@ class EnhancedPersistentThinkingAI:
             tavily_api_key=tavily_api_key,
             firecrawl_api_key=firecrawl_api_key
         )
+        
+        self.enable_multi_agent = enable_multi_agent
+        self.multi_agent_discussion = None
+        if enable_multi_agent:
+            try:
+                from .multi_agent_discussion import MultiAgentDiscussion, DiscussionAgent
+                self.multi_agent_discussion = MultiAgentDiscussion(
+                    knowledge_db_path=knowledge_db_path,
+                    log_path=log_path
+                )
+                
+                if specialized_agents:
+                    for agent_config in specialized_agents:
+                        agent = DiscussionAgent(**agent_config)
+                        self.multi_agent_discussion.add_agent(agent)
+            except ImportError:
+                print("マルチエージェント討論機能を有効にするには langchain をインストールしてください")
+                self.enable_multi_agent = False
         
         self.knowledge_db_path = knowledge_db_path
         self._load_knowledge_db()
@@ -292,10 +312,11 @@ class EnhancedPersistentThinkingAI:
                 import json
                 knowledge_items = json.loads(knowledge_json)
                 for item in knowledge_items:
-                    self.update_knowledge(
+                    self._update_knowledge(
                         item.get("subject", "モック主題"),
                         item.get("fact", "モックデータ"),
-                        item.get("confidence", 0.8)
+                        item.get("confidence", 0.8),
+                        "task_extraction"
                     )
             except Exception as e:
                 print(f"モック知識抽出エラー: {str(e)}")
@@ -320,6 +341,7 @@ class EnhancedPersistentThinkingAI:
         
         try:
             import re
+            import json
             json_match = re.search(r'\[\s*\{.*\}\s*\]', knowledge_json, re.DOTALL)
             if json_match:
                 knowledge_items = json.loads(json_match.group(0))
@@ -421,6 +443,7 @@ class EnhancedPersistentThinkingAI:
         
         try:
             import re
+            import json
             json_match = re.search(r'\[\s*\{.*\}\s*\]', triples_json, re.DOTALL)
             if json_match:
                 triples_items = json.loads(json_match.group(0))
@@ -732,6 +755,133 @@ class EnhancedPersistentThinkingAI:
         
         self.thinking_state["last_thought_time"] = time.time()
     
+    def get_knowledge_for_script(self, task_description: str, keywords: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        スクリプト生成用の知識を提供
+        
+        Args:
+            task_description: タスクの説明
+            keywords: 検索キーワード
+            
+        Returns:
+            Dict: スクリプト生成に役立つ知識情報
+        """
+        result = {
+            "task": task_description,
+            "related_knowledge": [],
+            "thinking_insights": [],
+            "hypotheses": []
+        }
+        
+        if not keywords:
+            keywords = self._extract_keywords_from_text(task_description)
+        
+        for subject, data in self.knowledge_db.items():
+            for keyword in keywords:
+                if keyword.lower() in subject.lower() or (
+                    data.get("fact") and keyword.lower() in data.get("fact", "").lower()
+                ):
+                    result["related_knowledge"].append({
+                        "subject": subject,
+                        "fact": data.get("fact", ""),
+                        "confidence": data.get("confidence", 0.0),
+                        "last_updated": data.get("last_updated", 0)
+                    })
+                    break
+        
+        related_insights = self._get_related_insights(task_description, limit=5)
+        result["thinking_insights"] = related_insights
+        
+        if self.enable_multi_agent and self.multi_agent_discussion:
+            try:
+                discussion_result = self.multi_agent_discussion.conduct_discussion(
+                    topic=f"「{task_description}」に関する仮説と解決アプローチ",
+                    rounds=2
+                )
+                if discussion_result and "consensus" in discussion_result:
+                    result["multi_agent_insights"] = discussion_result["consensus"]
+            except Exception as e:
+                self._log_thought("multi_agent_discussion_error", {
+                    "task": task_description,
+                    "error": str(e)
+                })
+        
+        return result
+    
+    def _extract_keywords_from_text(self, text: str) -> List[str]:
+        """テキストからキーワードを抽出"""
+        import re
+        words = re.findall(r'\b\w+\b', text.lower())
+        return [w for w in words if len(w) > 3]
+    
+    def _get_related_insights(self, text: str, limit: int = 5) -> List[Dict]:
+        """関連する洞察を取得"""
+        insights = []
+        try:
+            log_path = self.log_path
+            if os.path.exists(log_path):
+                with open(log_path, 'r', encoding='utf-8') as f:
+                    keywords = self._extract_keywords_from_text(text)
+                    for line in f:
+                        try:
+                            entry = json.loads(line.strip())
+                            if entry.get("type") in ["task_insight", "hypothesis_verification", "task_conclusion"]:
+                                content = entry.get("content", {})
+                                content_text = json.dumps(content, ensure_ascii=False).lower()
+                                
+                                for keyword in keywords:
+                                    if keyword in content_text:
+                                        insights.append({
+                                            "type": entry.get("type"),
+                                            "timestamp": entry.get("timestamp"),
+                                            "content": content
+                                        })
+                                        break
+                                        
+                                if len(insights) >= limit:
+                                    break
+                        except:
+                            continue
+        except Exception as e:
+            self._log_thought("get_related_insights_error", {
+                "error": str(e)
+            })
+            
+        return insights
+    
+    def _update_knowledge(self, subject: str, fact: str, confidence: float, source: str = "thinking"):
+        """
+        知識データベースを更新する
+        
+        Args:
+            subject: 知識の主題
+            fact: 事実や情報
+            confidence: 確信度 (0.0-1.0)
+            source: 知識の出所
+        """
+        if not subject or not fact:
+            return False
+            
+        self.knowledge_db[subject] = {
+            "fact": fact,
+            "confidence": confidence,
+            "last_updated": time.time(),
+            "source": source
+        }
+        
+        self._save_knowledge_db()
+        
+        if hasattr(self, 'knowledge_graph') and self.knowledge_graph is not None:
+            try:
+                self._update_knowledge_graph(subject, fact)
+            except Exception as e:
+                self._log_thought("knowledge_graph_update_error", {
+                    "subject": subject,
+                    "error": str(e)
+                })
+                
+        return True
+        
     def _think_about_knowledge(self):
         """現在の知識ベースについて考える"""
         import random
