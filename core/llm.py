@@ -4,29 +4,40 @@ import os
 import openai
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
+import requests
 
 class LLM:
     def __init__(self, 
                  api_key: Optional[str] = None, 
                  model: str = "gpt-4-turbo", 
-                 temperature: float = 0.7):
+                 temperature: float = 0.7,
+                 provider: str = "openai"):
         self.model = model
         self.temperature = temperature
+        self.provider = provider
         
         # Initialize the OpenAI client
         if api_key:
             openai_api_key = api_key
         else:
             # Try to get the API key from environment variables
-            openai_api_key = os.environ.get("OPENAI_API_KEY")
+            if provider == "openai":
+                openai_api_key = os.environ.get("OPENAI_API_KEY")
+            elif provider == "openrouter":
+                openai_api_key = os.environ.get("OPENROUTER_API_KEY")
+            else:
+                openai_api_key = os.environ.get("OPENAI_API_KEY")
             
         self.mock_mode = False
         if not openai_api_key:
             print("LLMはモックモードで動作中です。実際のAPIコールは行われません。")
             self.mock_mode = True
             openai_api_key = "sk-mock-key"
-            
-        self.client = OpenAI(api_key=openai_api_key)
+        
+        if provider == "openai":
+            self.client = OpenAI(api_key=openai_api_key)
+        else:
+            self.api_key = openai_api_key
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def generate_text(self, prompt: str) -> str:
@@ -50,17 +61,41 @@ class LLM:
                 return "これはモックモードのレスポンスです。実際のAPIコールは行われていません。"
             
         try:
-            if self.client.api_key in ["sk-mock-key", "dummy_key_for_testing"]:
+            if self.mock_mode or (hasattr(self, 'client') and self.client.api_key in ["sk-mock-key", "dummy_key_for_testing"]):
                 print("無効なAPIキーが検出されました。モックレスポンスを返します。")
                 return "APIキーが無効なため、モックレスポンスを返します。有効なAPIキーを設定してください。"
-                
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature
-            )
             
-            return response.choices[0].message.content
+            if self.provider == "openai":
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature
+                )
+                return response.choices[0].message.content
+            elif self.provider == "openrouter":
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://synthepseai.com",  # Replace with your site URL
+                    "X-Title": "SynthepseAI"  # Replace with your app name
+                }
+                
+                data = {
+                    "model": self.model,  # e.g., "anthropic/claude-3-7-sonnet"
+                    "messages": messages,
+                    "temperature": self.temperature
+                }
+                
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=data
+                )
+                
+                if response.status_code != 200:
+                    raise ValueError(f"OpenRouter API returned error: {response.text}")
+                    
+                return response.json()["choices"][0]["message"]["content"]
         except openai.AuthenticationError as e:
             print(f"認証エラー: {str(e)}")
             self.mock_mode = True  # 認証エラーが発生した場合、モックモードに切り替え

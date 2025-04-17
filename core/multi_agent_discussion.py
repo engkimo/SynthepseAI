@@ -10,6 +10,7 @@ from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.pydantic_v1 import BaseModel, Field
+from langchain.chat_models.base import BaseChatModel
 
 class DiscussionAgent:
     """特定の役割を持つディスカッションエージェント"""

@@ -38,7 +38,9 @@ class EnhancedPersistentThinkingAI:
         tavily_api_key: Optional[str] = None,
         firecrawl_api_key: Optional[str] = None,
         enable_multi_agent: bool = False,
-        specialized_agents: Optional[List[Dict[str, Any]]] = None
+        specialized_agents: Optional[List[Dict[str, Any]]] = None,
+        llm_provider: str = "openai",
+        openrouter_api_key: Optional[str] = None
     ):
         """
         強化版持続思考型AIの初期化
@@ -53,14 +55,23 @@ class EnhancedPersistentThinkingAI:
             tavily_api_key: TavilyのAPIキー
             firecrawl_api_key: FirecrawlのAPIキー
         """
-        api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
+        if llm_provider == "openai":
+            api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
+            model = "gpt-3.5-turbo"
+        elif llm_provider == "openrouter":
+            api_key = openrouter_api_key or os.environ.get("OPENROUTER_API_KEY", "dummy_key_for_testing")
+            model = model_name if "claude" in model_name else "anthropic/claude-3-7-sonnet"
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
+            model = "gpt-3.5-turbo"
         
         self.use_compatibility_mode = use_compatibility_mode
         
         self.llm = LLM(
             api_key=api_key,
-            model="gpt-3.5-turbo",  # 現在のLLMクラスで利用可能なモデル
-            temperature=0.7
+            model=model,
+            temperature=0.7,
+            provider=llm_provider
         )
         
         self.rome_model_editor = ROMEModelEditor(device=device)
