@@ -337,30 +337,6 @@ def add_conclusion(conclusion: str, confidence: float = 0.8) -> None:
             "task_conclusion"
         )
 
-task_description = task_info["description"]
-knowledge_db = load_knowledge_db()
-task_start_time = time.time()
-insights = []
-hypotheses = []
-conclusions = []
-
-log_thought("task_execution_start", {
-    "task": task_description,
-    "timestamp_readable": datetime.datetime.now().isoformat()
-})
-
-# メイン処理
-{main_code}
-
-log_thought("task_execution_complete", {
-    "task": task_description,
-    "execution_time": time.time() - task_start_time,
-    "insights_count": len(insights),
-    "hypotheses_count": len(hypotheses),
-    "conclusions_count": len(conclusions)
-})
-
-print(f"タスク完了: {task_description}")
 
 
 def main():
@@ -400,8 +376,7 @@ def main():
         print(f"次のコマンドでインストールしてください: pip install {missing_module}")
         
         try:
-            thinking = PersistentThinkingManager("エラー発生タスク")
-            thinking.log_thought("task_execution_error", {
+            log_thought("task_execution_error", {
                 "task": task_description,
                 "error_type": "ImportError",
                 "error_message": error_msg
@@ -419,15 +394,14 @@ def main():
         print(error_details)
         
         try:
-            thinking = PersistentThinkingManager("エラー発生タスク")
-            thinking.log_thought("task_execution_error", {
+            log_thought("task_execution_error", {
                 "task": task_description,
                 "error_type": type(e).__name__,
                 "error_message": str(e),
                 "traceback": error_details
             })
             
-            thinking.update_knowledge(
+            update_knowledge(
                 f"エラーパターン: {type(e).__name__}",
                 f"タスク実行中に発生: {str(e)}",
                 confidence=0.7
