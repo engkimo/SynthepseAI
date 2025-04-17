@@ -130,6 +130,11 @@ import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+task_description = ""
+insights = []
+hypotheses = []
+conclusions = []
+
 KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
 THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
 KNOWLEDGE_GRAPH_PATH = "./knowledge_graph.json"
@@ -142,7 +147,7 @@ def load_knowledge_db() -> Dict:
                 return json.load(f)
         return {}
     except Exception as e:
-        print(f"知識データベース読み込みエラー: {str(e)}")
+        print(f"知識データベース読み込みエラー: {{str(e)}}")
         return {}
 
 def save_knowledge_db(knowledge_db: Dict) -> bool:
@@ -154,7 +159,7 @@ def save_knowledge_db(knowledge_db: Dict) -> bool:
             json.dump(knowledge_db, indent=2, ensure_ascii=False, f)
         return True
     except Exception as e:
-        print(f"知識データベース保存エラー: {str(e)}")
+        print(f"知識データベース保存エラー: {{str(e)}}")
         return False
 
 def log_thought(thought_type: str, content: Dict[str, Any]) -> bool:
@@ -171,7 +176,7 @@ def log_thought(thought_type: str, content: Dict[str, Any]) -> bool:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
         return True
     except Exception as e:
-        print(f"思考ログ記録エラー: {str(e)}")
+        print(f"思考ログ記録エラー: {{str(e)}}")
         return False
 
 def update_knowledge(subject: str, fact: str, confidence: float = 0.8, source: str = None) -> bool:
@@ -217,7 +222,7 @@ def update_knowledge(subject: str, fact: str, confidence: float = 0.8, source: s
         
         return save_success
     except Exception as e:
-        print(f"知識更新エラー: {str(e)}")
+        print(f"知識更新エラー: {{str(e)}}")
         return False
 
 def get_knowledge(subject: str) -> Optional[str]:
@@ -257,7 +262,7 @@ def get_related_knowledge(keywords: List[str], limit: int = 5) -> List[Dict]:
 
 def add_insight(insight: str, confidence: float = 0.7) -> None:
     """タスク実行中の洞察を追加"""
-    global insights
+    global insights, task_description
     insights.append({
         "content": insight,
         "confidence": confidence,
@@ -272,7 +277,7 @@ def add_insight(insight: str, confidence: float = 0.7) -> None:
 
 def add_hypothesis(hypothesis: str, confidence: float = 0.6) -> None:
     """タスクに関する仮説を追加"""
-    global hypotheses
+    global hypotheses, task_description
     hypotheses.append({
         "content": hypothesis,
         "confidence": confidence,
@@ -288,7 +293,7 @@ def add_hypothesis(hypothesis: str, confidence: float = 0.6) -> None:
 
 def verify_hypothesis(hypothesis: str, verified: bool, evidence: str, confidence: float = 0.7) -> None:
     """仮説の検証結果を記録"""
-    global hypotheses
+    global hypotheses, task_description
     
     for h in hypotheses:
         if h["content"] == hypothesis:
@@ -316,7 +321,7 @@ def verify_hypothesis(hypothesis: str, verified: bool, evidence: str, confidence
 
 def add_conclusion(conclusion: str, confidence: float = 0.8) -> None:
     """タスクの結論を追加"""
-    global conclusions
+    global conclusions, task_description
     conclusions.append({
         "content": conclusion,
         "confidence": confidence,
@@ -337,22 +342,31 @@ def add_conclusion(conclusion: str, confidence: float = 0.8) -> None:
             "task_conclusion"
         )
 
-
-
 def main():
+    global task_description, insights, hypotheses, conclusions
+    
     try:
         task_info = globals().get('task_info', {})
         task_description = task_info.get('description', 'Unknown task')
+        task_start_time = time.time()
+        insights = []
+        hypotheses = []
+        conclusions = []
+        
+        log_thought("task_execution_start", {
+            "task": task_description,
+            "timestamp_readable": datetime.datetime.now().isoformat()
+        })
         
         keywords = [word for word in task_description.lower().split() if len(word) > 3]
         related_knowledge = get_related_knowledge(keywords)
         
         if related_knowledge:
-            print(f"タスク '{task_description}' に関連する既存知識が {len(related_knowledge)} 件見つかりました:")
+            print(f"タスク '{{task_description}}' に関連する既存知識が {{len(related_knowledge)}} 件見つかりました:")
             for i, knowledge in enumerate(related_knowledge):
-                print(f"  {i+1}. {knowledge['subject']}: {knowledge['fact']} (確信度: {knowledge['confidence']:.2f})")
+                print(f"  {{i+1}}. {{knowledge['subject']}}: {{knowledge['fact']}} (確信度: {{knowledge['confidence']:.2f}})")
         else:
-            print(f"タスク '{task_description}' に関連する既存知識は見つかりませんでした。")
+            print(f"タスク '{{task_description}}' に関連する既存知識は見つかりませんでした。")
             add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
         
         # メイン処理
@@ -371,9 +385,9 @@ def main():
     except ImportError as e:
         # 必要なパッケージがない場合のエラー処理
         missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
-        error_msg = f"エラー: 必要なモジュール '{missing_module}' がインストールされていません。"
+        error_msg = f"エラー: 必要なモジュール '{{missing_module}}' がインストールされていません。"
         print(error_msg)
-        print(f"次のコマンドでインストールしてください: pip install {missing_module}")
+        print(f"次のコマンドでインストールしてください: pip install {{missing_module}}")
         
         try:
             log_thought("task_execution_error", {
@@ -389,7 +403,7 @@ def main():
     except Exception as e:
         # その他のエラー処理
         error_details = traceback.format_exc()
-        error_msg = f"エラー: {str(e)}"
+        error_msg = f"エラー: {{str(e)}}"
         print(error_msg)
         print(error_details)
         
@@ -402,8 +416,8 @@ def main():
             })
             
             update_knowledge(
-                f"エラーパターン: {type(e).__name__}",
-                f"タスク実行中に発生: {str(e)}",
+                f"エラーパターン: {{type(e).__name__}}",
+                f"タスク実行中に発生: {{str(e)}}",
                 confidence=0.7
             )
         except:
@@ -484,9 +498,9 @@ def get_template_for_task(task_description, required_libraries=None):
                         "required_libraries": required_libraries
                     }
                 }
-                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
     except Exception as e:
-        print(f"テンプレート選択のログ記録に失敗: {str(e)}")
+        print(f"テンプレート選択のログ記録に失敗: {{str(e)}}")
     
     # テンプレート内のプレースホルダーを検証
     import re
@@ -520,7 +534,7 @@ def main():
         # メイン処理
 {main_code}
     except Exception as e:
-        print(f"Error: {{str(e)}}")
+        print(f"Error: {{{{str(e)}}}}")
         return str(e)
     
     return "Task completed successfully"
