@@ -134,135 +134,234 @@ KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
 THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
 KNOWLEDGE_GRAPH_PATH = "./knowledge_graph.json"
 
-class PersistentThinkingManager:
-    """持続思考AIとの連携を管理するクラス"""
-    
-    def __init__(self, task_description: str):
-        """
-        持続思考マネージャーの初期化
+def load_knowledge_db() -> Dict:
+    """知識データベースを読み込む"""
+    try:
+        if os.path.exists(KNOWLEDGE_DB_PATH):
+            with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"知識データベース読み込みエラー: {str(e)}")
+        return {}
+
+def save_knowledge_db(knowledge_db: Dict) -> bool:
+    """知識データベースを保存する"""
+    try:
+        os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
         
-        Args:
-            task_description: 現在のタスクの説明
-        """
-        self.task_description = task_description
-        self.knowledge_db = self.load_knowledge_db()
-        self.task_start_time = time.time()
-        self.insights = []
-        self.hypotheses = []
-        self.conclusions = []
+        with open(KNOWLEDGE_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(knowledge_db, indent=2, ensure_ascii=False, f)
+        return True
+    except Exception as e:
+        print(f"知識データベース保存エラー: {str(e)}")
+        return False
+
+def log_thought(thought_type: str, content: Dict[str, Any]) -> bool:
+    """思考ログに記録する"""
+    try:
+        os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
         
-        self.log_thought("task_execution_start", {
-            "task": self.task_description,
-            "timestamp_readable": datetime.datetime.now().isoformat()
+        log_entry = {
+            "timestamp": time.time(),
+            "type": thought_type,
+            "content": content
+        }
+        with open(THINKING_LOG_PATH, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
+        return True
+    except Exception as e:
+        print(f"思考ログ記録エラー: {str(e)}")
+        return False
+
+def update_knowledge(subject: str, fact: str, confidence: float = 0.8, source: str = None) -> bool:
+    """知識を更新する"""
+    try:
+        knowledge_db = load_knowledge_db()
+        
+        if subject not in knowledge_db:
+            knowledge_db[subject] = {}
+            original_fact = None
+        else:
+            original_fact = knowledge_db[subject].get("fact")
+            
+        existing_confidence = knowledge_db[subject].get("confidence", 0)
+        if existing_confidence > confidence + 0.1:
+            log_thought("knowledge_update_rejected", {
+                "subject": subject,
+                "existing_fact": original_fact,
+                "new_fact": fact,
+                "existing_confidence": existing_confidence,
+                "new_confidence": confidence,
+                "reason": "新しい情報の確信度が既存の情報より低いため更新を拒否"
+            })
+            return False
+        
+        knowledge_db[subject]["fact"] = fact
+        knowledge_db[subject]["confidence"] = confidence
+        knowledge_db[subject]["last_updated"] = time.time()
+        
+        if source:
+            knowledge_db[subject]["source"] = source
+        
+        save_success = save_knowledge_db(knowledge_db)
+        
+        log_thought("knowledge_update", {
+            "subject": subject,
+            "original_fact": original_fact,
+            "new_fact": fact,
+            "confidence": confidence,
+            "source": source,
+            "success": save_success
         })
         
-        self.related_knowledge = self._get_initial_knowledge()
+        return save_success
+    except Exception as e:
+        print(f"知識更新エラー: {str(e)}")
+        return False
+
+def get_knowledge(subject: str) -> Optional[str]:
+    """特定の主題に関する知識を取得する"""
+    try:
+        knowledge_db = load_knowledge_db()
+        return knowledge_db.get(subject, {}).get("fact")
+    except Exception as e:
+        print(f"知識取得エラー: {str(e)}")
+        return None
+
+def get_related_knowledge(keywords: List[str], limit: int = 5) -> List[Dict]:
+    """キーワードに関連する知識を取得する"""
+    try:
+        knowledge_db = load_knowledge_db()
+        results = []
         
-        if self.related_knowledge:
-            self.log_thought("initial_knowledge_analysis", {
-                "task": self.task_description,
-                "related_knowledge_count": len(self.related_knowledge),
-                "knowledge_subjects": [k["subject"] for k in self.related_knowledge]
-            })
-    
-    def load_knowledge_db(self) -> Dict:
-        """知識データベースを読み込む"""
-        try:
-            if os.path.exists(KNOWLEDGE_DB_PATH):
-                with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return {}
-        except Exception as e:
-            print(f"知識データベース読み込みエラー: {str(e)}")
-            return {}
-    
-    def save_knowledge_db(self, knowledge_db: Dict) -> bool:
-        """知識データベースを保存する"""
-        try:
-            os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
-            
-            with open(KNOWLEDGE_DB_PATH, 'w', encoding='utf-8') as f:
-                json.dump(knowledge_db, indent=2, ensure_ascii=False, f)
-            return True
-        except Exception as e:
-            print(f"知識データベース保存エラー: {str(e)}")
-            return False
-    
-    def log_thought(self, thought_type: str, content: Dict[str, Any]) -> bool:
-        """思考ログに記録する"""
-        try:
-            os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
-            
-            log_entry = {
-                "timestamp": time.time(),
-                "type": thought_type,
-                "content": content
-            }
-            with open(THINKING_LOG_PATH, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
-            return True
-        except Exception as e:
-            print(f"思考ログ記録エラー: {str(e)}")
-            return False
-    
-    def update_knowledge(self, subject: str, fact: str, confidence: float = 0.8, source: str = None) -> bool:
-        """
-        知識を更新する
-        
-        Args:
-            subject: 知識の主題
-            fact: 事実や知識の内容
-            confidence: 確信度 (0.0-1.0)
-            source: 情報源（ある場合）
-            
-        Returns:
-            bool: 更新が成功したかどうか
-        """
-        try:
-            knowledge_db = self.load_knowledge_db()
-            
-            if subject not in knowledge_db:
-                knowledge_db[subject] = {}
-                original_fact = None
-            else:
-                original_fact = knowledge_db[subject].get("fact")
-                
-                existing_confidence = knowledge_db[subject].get("confidence", 0)
-                if existing_confidence > confidence + 0.1:
-                    self.log_thought("knowledge_update_rejected", {
+        for subject, data in knowledge_db.items():
+            for keyword in keywords:
+                if keyword.lower() in subject.lower() or (data.get("fact") and keyword.lower() in data.get("fact", "").lower()):
+                    results.append({
                         "subject": subject,
-                        "existing_fact": original_fact,
-                        "new_fact": fact,
-                        "existing_confidence": existing_confidence,
-                        "new_confidence": confidence,
-                        "reason": "新しい情報の確信度が既存の情報より低いため更新を拒否"
+                        "fact": data.get("fact"),
+                        "confidence": data.get("confidence", 0),
+                        "last_updated": data.get("last_updated"),
+                        "source": data.get("source")
                     })
-                    return False
-            
-            knowledge_db[subject]["fact"] = fact
-            knowledge_db[subject]["confidence"] = confidence
-            knowledge_db[subject]["last_updated"] = time.time()
-            
-            if source:
-                knowledge_db[subject]["source"] = source
-            
-            save_success = self.save_knowledge_db(knowledge_db)
-            
-            self.log_thought("knowledge_update", {
-                "subject": subject,
-                "original_fact": original_fact,
-                "new_fact": fact,
-                "confidence": confidence,
-                "source": source,
-                "success": save_success
-            })
-            
-            self.knowledge_db = knowledge_db
-            
-            return save_success
-        except Exception as e:
-            print(f"知識更新エラー: {str(e)}")
-            return False
+                    break
+                    
+            if len(results) >= limit:
+                break
+                
+        return results
+    except Exception as e:
+        print(f"関連知識取得エラー: {str(e)}")
+        return []
+
+def add_insight(insight: str, confidence: float = 0.7) -> None:
+    """タスク実行中の洞察を追加"""
+    global insights
+    insights.append({
+        "content": insight,
+        "confidence": confidence,
+        "timestamp": time.time()
+    })
+    
+    log_thought("task_insight", {
+        "task": task_description,
+        "insight": insight,
+        "confidence": confidence
+    })
+
+def add_hypothesis(hypothesis: str, confidence: float = 0.6) -> None:
+    """タスクに関する仮説を追加"""
+    global hypotheses
+    hypotheses.append({
+        "content": hypothesis,
+        "confidence": confidence,
+        "timestamp": time.time(),
+        "verified": False
+    })
+    
+    log_thought("task_hypothesis", {
+        "task": task_description,
+        "hypothesis": hypothesis,
+        "confidence": confidence
+    })
+
+def verify_hypothesis(hypothesis: str, verified: bool, evidence: str, confidence: float = 0.7) -> None:
+    """仮説の検証結果を記録"""
+    global hypotheses
+    
+    for h in hypotheses:
+        if h["content"] == hypothesis:
+            h["verified"] = verified
+            h["evidence"] = evidence
+            h["verification_confidence"] = confidence
+            h["verification_time"] = time.time()
+            break
+    
+    log_thought("hypothesis_verification", {
+        "task": task_description,
+        "hypothesis": hypothesis,
+        "verified": verified,
+        "evidence": evidence,
+        "confidence": confidence
+    })
+    
+    if verified and confidence > 0.7:
+        update_knowledge(
+            f"検証済み仮説: {hypothesis[:50]}...",
+            f"検証結果: {evidence}",
+            confidence,
+            "hypothesis_verification"
+        )
+
+def add_conclusion(conclusion: str, confidence: float = 0.8) -> None:
+    """タスクの結論を追加"""
+    global conclusions
+    conclusions.append({
+        "content": conclusion,
+        "confidence": confidence,
+        "timestamp": time.time()
+    })
+    
+    log_thought("task_conclusion", {
+        "task": task_description,
+        "conclusion": conclusion,
+        "confidence": confidence
+    })
+    
+    if confidence > 0.7:
+        update_knowledge(
+            f"タスク結論: {task_description[:50]}...",
+            conclusion,
+            confidence,
+            "task_conclusion"
+        )
+
+task_description = task_info["description"]
+knowledge_db = load_knowledge_db()
+task_start_time = time.time()
+insights = []
+hypotheses = []
+conclusions = []
+
+log_thought("task_execution_start", {
+    "task": task_description,
+    "timestamp_readable": datetime.datetime.now().isoformat()
+})
+
+# メイン処理
+{main_code}
+
+log_thought("task_execution_complete", {
+    "task": task_description,
+    "execution_time": time.time() - task_start_time,
+    "insights_count": len(insights),
+    "hypotheses_count": len(hypotheses),
+    "conclusions_count": len(conclusions)
+})
+
+print(f"タスク完了: {task_description}")
+
     
     def get_knowledge(self, subject: str) -> Optional[str]:
         """特定の主題に関する知識を取得する"""
@@ -643,10 +742,17 @@ def get_template_for_task(task_description, required_libraries=None):
     template = template.replace("{imports}", "##IMPORTS##")
     template = template.replace("{main_code}", "##MAIN_CODE##")
     
+    template = template.replace("{str(e)}", "##STR_E##")
+    template = template.replace("{type(e).__name__}", "##TYPE_E##")
+    template = template.replace("{e}", "##E##")
+    
     template = template.replace("{", "{{").replace("}", "}}")
     
     template = template.replace("##IMPORTS##", "{imports}")
     template = template.replace("##MAIN_CODE##", "{main_code}")
+    template = template.replace("##STR_E##", "{str(e)}")
+    template = template.replace("##TYPE_E##", "{type(e).__name__}")
+    template = template.replace("##E##", "{e}")
     
     template = template.replace("{{{{", "{{").replace("}}}}", "}}")
     

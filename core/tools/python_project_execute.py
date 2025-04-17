@@ -115,7 +115,10 @@ class PythonProjectExecuteTool(BaseTool):
             
             template = get_template_for_task(task.description, required_libraries)
             
-            indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
+            if "PERSISTENT_THINKING_TEMPLATE" in template:
+                indented_code = task.code
+            else:
+                indented_code = "\n".join(["    " + line for line in task.code.split("\n")])
             
             if "{imports}" not in template or "{main_code}" not in template:
                 print("Warning: Template missing required placeholders. Using basic template.")
@@ -126,7 +129,7 @@ def main():
     try:
 {main_code}
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {{str(e)}}")
         return str(e)
     
     return "Task completed successfully"
