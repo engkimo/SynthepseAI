@@ -220,9 +220,18 @@ def update_knowledge(subject: str, fact: str, confidence: float = 0.8, source: s
             "success": save_success
         })
         
+        try:
+            if confidence < 0.7 and "?" in subject:
+                log_thought("multi_agent_discussion_trigger", {
+                    "subject": subject,
+                    "reason": "低確信度の疑問に対してマルチエージェント討論を開始"
+                })
+        except Exception as e:
+            print(f"マルチエージェント連携エラー: {{{{str(e)}}}}")
+        
         return save_success
     except Exception as e:
-        print(f"知識更新エラー: {{str(e)}}")
+        print(f"知識更新エラー: {{{{str(e)}}}}")
         return False
 
 def get_knowledge(subject: str) -> Optional[str]:
@@ -319,6 +328,69 @@ def verify_hypothesis(hypothesis: str, verified: bool, evidence: str, confidence
             "hypothesis_verification"
         )
 
+def verify_hypothesis_with_simulation(hypothesis: str, simulation_code: str) -> Dict[str, Any]:
+    """仮説をシミュレーションで検証する
+    
+    Args:
+        hypothesis: 検証する仮説
+        simulation_code: シミュレーションに使用するPythonコード
+        
+    Returns:
+        Dict: 検証結果を含む辞書
+    """
+    global task_description
+    
+    result = {
+        "hypothesis": hypothesis,
+        "verified": False,
+        "confidence": 0.0,
+        "evidence": [],
+        "timestamp": time.time()
+    }
+    
+    try:
+        local_vars = {}
+        exec(simulation_code, {"__builtins__": __builtins__}, local_vars)
+        
+        simulation_result = local_vars.get("result", None)
+        
+        if simulation_result:
+            result["simulation_result"] = str(simulation_result)
+            result["verified"] = local_vars.get("verified", False)
+            result["confidence"] = local_vars.get("confidence", 0.5)
+            result["evidence"] = local_vars.get("evidence", [])
+            
+            log_thought("hypothesis_simulation", {
+                "task": task_description,
+                "hypothesis": hypothesis,
+                "verified": result["verified"],
+                "confidence": result["confidence"],
+                "evidence": result["evidence"]
+            })
+            
+            if result["verified"] and result["confidence"] > 0.7:
+                subject = f"検証済み仮説: {hypothesis[:50]}..."
+                fact = f"検証結果: {result['simulation_result']}"
+                update_knowledge(subject, fact, result["confidence"], "hypothesis_simulation")
+        else:
+            log_thought("hypothesis_simulation_warning", {
+                "task": task_description,
+                "hypothesis": hypothesis,
+                "warning": "シミュレーション結果が取得できませんでした"
+            })
+    except Exception as e:
+        import traceback
+        result["error"] = str(e)
+        result["traceback"] = traceback.format_exc()
+        log_thought("hypothesis_simulation_error", {
+            "task": task_description,
+            "hypothesis": hypothesis,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        })
+        
+    return result
+
 def add_conclusion(conclusion: str, confidence: float = 0.8) -> None:
     """タスクの結論を追加"""
     global conclusions, task_description
@@ -342,6 +414,30 @@ def add_conclusion(conclusion: str, confidence: float = 0.8) -> None:
             "task_conclusion"
         )
 
+def request_multi_agent_discussion(topic: str) -> Dict[str, Any]:
+    """マルチエージェント討論を要求する
+    
+    Args:
+        topic: 討論のトピック
+        
+    Returns:
+        Dict: 討論の結果（成功しなかった場合は空の辞書）
+    """
+    try:
+        log_thought("multi_agent_discussion_request", {
+            "topic": topic,
+            "timestamp": time.time()
+        })
+        
+        return {
+            "topic": topic,
+            "requested": True,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        print(f"マルチエージェント討論リクエストエラー: {{{{str(e)}}}}")
+        return {}
+
 def main():
     global task_description, insights, hypotheses, conclusions
     
@@ -362,12 +458,18 @@ def main():
         related_knowledge = get_related_knowledge(keywords)
         
         if related_knowledge:
-            print(f"タスク '{{task_description}}' に関連する既存知識が {{len(related_knowledge)}} 件見つかりました:")
+            print(f"タスク '{{{{task_description}}}}' に関連する既存知識が {{{{len(related_knowledge)}}}} 件見つかりました:")
             for i, knowledge in enumerate(related_knowledge):
-                print(f"  {{i+1}}. {{knowledge['subject']}}: {{knowledge['fact']}} (確信度: {{knowledge['confidence']:.2f}})")
+                print(f"  {{{{i+1}}}}. {{{{knowledge['subject']}}}}: {{{{knowledge['fact']}}}} (確信度: {{{{knowledge['confidence']:.2f}}}})")
+            
+            if len(related_knowledge) >= 2:
+                hypothesis = f"タスク '{task_description}' は {related_knowledge[0]['subject']} と {related_knowledge[1]['subject']} に関連している可能性がある"
+                add_hypothesis(hypothesis, confidence=0.6)
         else:
-            print(f"タスク '{{task_description}}' に関連する既存知識は見つかりませんでした。")
+            print(f"タスク '{{{{task_description}}}}' に関連する既存知識は見つかりませんでした。")
             add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
+            
+            request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
         
         # メイン処理
 {main_code}
