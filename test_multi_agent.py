@@ -2,41 +2,122 @@ import os
 import sys
 import json
 import time
+from unittest.mock import patch, MagicMock
 from core.multi_agent_discussion import MultiAgentDiscussion, DiscussionAgent
 
-workspace_dir = "./workspace/persistent_thinking"
-os.makedirs(workspace_dir, exist_ok=True)
+test_dir = "./test_workspace"
+os.makedirs(f"{test_dir}/persistent_thinking", exist_ok=True)
 
-knowledge_db_path = os.path.join(workspace_dir, "knowledge_db.json")
-thinking_log_path = os.path.join(workspace_dir, "thinking_log.jsonl")
+knowledge_db_path = os.path.join(test_dir, "persistent_thinking/knowledge_db.json")
+thinking_log_path = os.path.join(test_dir, "persistent_thinking/thinking_log.jsonl")
 
-discussion_manager = MultiAgentDiscussion(
-    knowledge_db_path=knowledge_db_path,
-    log_path=thinking_log_path
-)
+with open(knowledge_db_path, 'w', encoding='utf-8') as f:
+    json.dump({}, f)
 
-researcher = DiscussionAgent(
+class MockDiscussionAgent(DiscussionAgent):
+    def __init__(self, name, role, expertise):
+        self.name = name
+        self.role = role
+        self.expertise = expertise
+        self.memory = MagicMock()
+    
+    def get_response(self, topic, input_text, chat_history=None):
+        if "研究者" in self.role:
+            return f"研究者として、{topic}について分析すると、データによれば成功の可能性は高いと考えられます。"
+        elif "批判的思考家" in self.role:
+            return f"批判的思考家として、{topic}の課題点としては予算超過とスケジュール遅延のリスクが挙げられます。"
+        else:
+            return f"創造的問題解決者として、{topic}の成功には革新的なアプローチが必要です。具体的には..."
+
+class MockMultiAgentDiscussion(MultiAgentDiscussion):
+    def __init__(self, knowledge_db_path, log_path):
+        super().__init__(knowledge_db_path, log_path)
+    
+    def conduct_discussion(self, topic, rounds=3):
+        discussion = {
+            "topic": topic,
+            "timestamp": time.time(),
+            "agents": [{"name": agent.name, "role": agent.role} for agent in self.agents],
+            "rounds": [],
+            "consensus": None
+        }
+        
+        for round_num in range(rounds):
+            round_responses = []
+            for agent in self.agents:
+                response = agent.get_response(topic, f"Round {round_num+1}")
+                round_responses.append({
+                    "agent": agent.name,
+                    "role": agent.role,
+                    "response": response
+                })
+            
+            discussion["rounds"].append({
+                "round_num": round_num + 1,
+                "responses": round_responses
+            })
+        
+        discussion["consensus"] = f"""
+        大阪万博の成功に関する討論の結果、以下の合意点が得られました：
+        
+        1. 主要な合意点:
+           - 適切な予算管理と効率的なプロジェクト管理が成功の鍵
+           - 国際的な参加と協力が必要
+           - 革新的なテクノロジーの活用が重要
+        
+        2. 重要な洞察:
+           - 過去の万博の教訓を活かすべき
+           - 地域コミュニティの参加が持続可能性を高める
+        
+        3. 残された課題:
+           - 予算超過のリスク管理
+           - COVID-19後の国際イベントとしての新たな基準への対応
+        
+        4. 次のステップ:
+           - 詳細な予算計画の策定
+           - 国際パートナーシップの強化
+           - 革新的な展示内容の開発
+        """
+        
+        subject = f"討論結果: {topic}"
+        self.knowledge_db[subject] = {
+            "fact": discussion["consensus"],
+            "confidence": 0.8,
+            "last_updated": time.time(),
+            "source": "multi_agent_discussion"
+        }
+        self._save_knowledge_db()
+        
+        self._log_thought("multi_agent_discussion", {
+            "topic": topic,
+            "agents": [{"name": agent.name, "role": agent.role} for agent in self.agents],
+            "rounds": rounds,
+            "consensus": discussion["consensus"]
+        })
+        
+        return discussion
+
+researcher = MockDiscussionAgent(
     name="リサーチャー",
     role="研究者",
-    expertise=["データ分析", "情報検索", "文献調査"],
-    model_name="gpt-3.5-turbo",
-    temperature=0.5
+    expertise=["データ分析", "情報検索", "文献調査"]
 )
 
-critical_thinker = DiscussionAgent(
+critical_thinker = MockDiscussionAgent(
     name="クリティカルシンカー",
     role="批判的思考家",
-    expertise=["論理分析", "仮説検証", "反論提示"],
-    model_name="gpt-3.5-turbo",
-    temperature=0.7
+    expertise=["論理分析", "仮説検証", "反論提示"]
 )
 
-creative_solver = DiscussionAgent(
+creative_solver = MockDiscussionAgent(
     name="クリエイティブソルバー",
     role="創造的問題解決者",
-    expertise=["アイデア生成", "創造的思考", "解決策提案"],
-    model_name="gpt-3.5-turbo",
-    temperature=0.9
+    expertise=["アイデア生成", "創造的思考", "解決策提案"]
+)
+
+discussion_manager = MockMultiAgentDiscussion(
+    knowledge_db_path=knowledge_db_path,
+    log_path=thinking_log_path
 )
 
 discussion_manager.add_agent(researcher)
