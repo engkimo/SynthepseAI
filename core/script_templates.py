@@ -362,255 +362,33 @@ log_thought("task_execution_complete", {
 
 print(f"タスク完了: {task_description}")
 
-    
-    def get_knowledge(self, subject: str) -> Optional[str]:
-        """特定の主題に関する知識を取得する"""
-        try:
-            return self.knowledge_db.get(subject, {}).get("fact")
-        except Exception as e:
-            print(f"知識取得エラー: {str(e)}")
-            return None
-    
-    def get_related_knowledge(self, keywords: List[str], limit: int = 5) -> List[Dict]:
-        """キーワードに関連する知識を取得する"""
-        try:
-            results = []
-            
-            for subject, data in self.knowledge_db.items():
-                for keyword in keywords:
-                    if keyword.lower() in subject.lower() or (data.get("fact") and keyword.lower() in data.get("fact", "").lower()):
-                        results.append({
-                            "subject": subject,
-                            "fact": data.get("fact"),
-                            "confidence": data.get("confidence", 0),
-                            "last_updated": data.get("last_updated"),
-                            "source": data.get("source")
-                        })
-                        break
-                        
-                if len(results) >= limit:
-                    break
-                    
-            return results
-        except Exception as e:
-            print(f"関連知識取得エラー: {str(e)}")
-            return []
-    
-    def add_insight(self, insight: str, confidence: float = 0.7) -> None:
-        """タスク実行中の洞察を追加"""
-        self.insights.append({
-            "content": insight,
-            "confidence": confidence,
-            "timestamp": time.time()
-        })
-        
-        self.log_thought("task_insight", {
-            "task": self.task_description,
-            "insight": insight,
-            "confidence": confidence
-        })
-    
-    def add_hypothesis(self, hypothesis: str, evidence: List[str] = None) -> None:
-        """仮説を追加"""
-        hypothesis_entry = {
-            "content": hypothesis,
-            "evidence": evidence or [],
-            "timestamp": time.time(),
-            "verified": False
-        }
-        
-        self.hypotheses.append(hypothesis_entry)
-        
-        self.log_thought("hypothesis_formation", {
-            "task": self.task_description,
-            "hypothesis": hypothesis,
-            "evidence": evidence or []
-        })
-    
-    def verify_hypothesis(self, hypothesis_idx: int, verified: bool, conclusion: str) -> None:
-        """仮説を検証"""
-        if 0 <= hypothesis_idx < len(self.hypotheses):
-            self.hypotheses[hypothesis_idx]["verified"] = verified
-            self.hypotheses[hypothesis_idx]["conclusion"] = conclusion
-            
-            self.log_thought("hypothesis_verification", {
-                "task": self.task_description,
-                "hypothesis": self.hypotheses[hypothesis_idx]["content"],
-                "verified": verified,
-                "conclusion": conclusion
-            })
-    
-    def verify_hypothesis_with_simulation(self, hypothesis: str, simulation_code: str) -> Dict[str, Any]:
-        """仮説をシミュレーションで検証する
-        
-        Args:
-            hypothesis: 検証する仮説
-            simulation_code: シミュレーションに使用するPythonコード
-            
-        Returns:
-            Dict: 検証結果を含む辞書
-        """
-        result = {
-            "hypothesis": hypothesis,
-            "verified": False,
-            "confidence": 0.0,
-            "evidence": [],
-            "timestamp": time.time()
-        }
-        
-        try:
-            local_vars = {}
-            exec(simulation_code, {"__builtins__": __builtins__}, local_vars)
-            
-            simulation_result = local_vars.get("result", None)
-            
-            if simulation_result:
-                result["simulation_result"] = str(simulation_result)
-                result["verified"] = local_vars.get("verified", False)
-                result["confidence"] = local_vars.get("confidence", 0.5)
-                result["evidence"] = local_vars.get("evidence", [])
-                
-                self.log_thought("hypothesis_simulation", {
-                    "task": self.task_description,
-                    "hypothesis": hypothesis,
-                    "verified": result["verified"],
-                    "confidence": result["confidence"],
-                    "evidence": result["evidence"]
-                })
-                
-                self.verification_results = getattr(self, "verification_results", [])
-                self.verification_results.append(result)
-                
-                if result["verified"] and result["confidence"] > 0.7:
-                    subject = f"検証済み仮説: {hypothesis[:50]}..."
-                    fact = f"検証結果: {result['simulation_result']}"
-                    self.update_knowledge(subject, fact, result["confidence"], "hypothesis_simulation")
-        except Exception as e:
-            result["error"] = str(e)
-            result["traceback"] = traceback.format_exc()
-            self.log_thought("hypothesis_simulation_error", {
-                "task": self.task_description,
-                "hypothesis": hypothesis,
-                "error": str(e)
-            })
-            
-        return result
-    
-    def add_conclusion(self, conclusion: str, confidence: float = 0.8) -> None:
-        """タスクの結論を追加"""
-        self.conclusions.append({
-            "content": conclusion,
-            "confidence": confidence,
-            "timestamp": time.time()
-        })
-        
-        self.log_thought("task_conclusion", {
-            "task": self.task_description,
-            "conclusion": conclusion,
-            "confidence": confidence
-        })
-        
-        if confidence >= 0.7:
-            subject = f"結論: {self.task_description}"
-            self.update_knowledge(subject, conclusion, confidence)
-    
-    def finalize_task(self, result: Any) -> None:
-        """タスクの完了を記録"""
-        execution_time = time.time() - self.task_start_time
-        
-        result_str = str(result) if result is not None else "No result"
-        
-        self.log_thought("task_execution_complete", {
-            "task": self.task_description,
-            "result": result_str,
-            "execution_time_seconds": execution_time,
-            "insights_count": len(self.insights),
-            "hypotheses_count": len(self.hypotheses),
-            "conclusions_count": len(self.conclusions),
-            "timestamp_readable": datetime.datetime.now().isoformat()
-        })
-        
-        if self.conclusions:
-            best_conclusion = max(self.conclusions, key=lambda x: x["confidence"])
-            subject = f"タスク結論: {self.task_description}"
-            self.update_knowledge(
-                subject=subject,
-                fact=best_conclusion["content"],
-                confidence=best_conclusion["confidence"]
-            )
-    
-    def _get_initial_knowledge(self) -> List[Dict]:
-        """タスクに関連する初期知識を取得"""
-        keywords = self._extract_keywords(self.task_description)
-        
-        return self.get_related_knowledge(keywords, limit=10)
-    
-    def _extract_keywords(self, text: str) -> List[str]:
-        """テキストからキーワードを抽出"""
-        words = re.findall(r'\\b\\w+\\b', text.lower())
-        return [w for w in words if len(w) > 3]
-    
-    def get_thinking_history(self, limit: int = 20) -> List[Dict]:
-        """最近の思考履歴を取得"""
-        try:
-            if not os.path.exists(THINKING_LOG_PATH):
-                return []
-                
-            history = []
-            with open(THINKING_LOG_PATH, 'r', encoding='utf-8') as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        history.append(entry)
-                    except:
-                        continue
-            
-            return sorted(history, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
-        except Exception as e:
-            print(f"思考履歴取得エラー: {str(e)}")
-            return []
-    
-    def search_thinking_log(self, query: str, limit: int = 10) -> List[Dict]:
-        """思考ログを検索"""
-        try:
-            if not os.path.exists(THINKING_LOG_PATH):
-                return []
-                
-            results = []
-            with open(THINKING_LOG_PATH, 'r', encoding='utf-8') as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        entry_str = json.dumps(entry, ensure_ascii=False).lower()
-                        if query.lower() in entry_str:
-                            results.append(entry)
-                    except:
-                        continue
-            
-            return sorted(results, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
-        except Exception as e:
-            print(f"思考ログ検索エラー: {str(e)}")
-            return []
 
 def main():
     try:
         task_info = globals().get('task_info', {})
-        task_description = getattr(task_info, 'description', 'Unknown task')
+        task_description = task_info.get('description', 'Unknown task')
         
-        thinking = PersistentThinkingManager(task_description)
+        keywords = [word for word in task_description.lower().split() if len(word) > 3]
+        related_knowledge = get_related_knowledge(keywords)
         
-        if thinking.related_knowledge:
-            print(f"タスク '{task_description}' に関連する既存知識が {len(thinking.related_knowledge)} 件見つかりました:")
-            for i, knowledge in enumerate(thinking.related_knowledge):
+        if related_knowledge:
+            print(f"タスク '{task_description}' に関連する既存知識が {len(related_knowledge)} 件見つかりました:")
+            for i, knowledge in enumerate(related_knowledge):
                 print(f"  {i+1}. {knowledge['subject']}: {knowledge['fact']} (確信度: {knowledge['confidence']:.2f})")
         else:
             print(f"タスク '{task_description}' に関連する既存知識は見つかりませんでした。")
-            thinking.add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
+            add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
         
         # メイン処理
 {main_code}
         
-        thinking.finalize_task(result if 'result' in locals() else "Task completed successfully")
+        log_thought("task_execution_complete", {
+            "task": task_description,
+            "execution_time": time.time() - task_start_time,
+            "insights_count": len(insights),
+            "hypotheses_count": len(hypotheses),
+            "conclusions_count": len(conclusions)
+        })
         
         return result if 'result' in locals() else "Task completed successfully"
         
