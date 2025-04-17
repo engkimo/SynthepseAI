@@ -145,7 +145,10 @@ task_info = {{
             
             formatted_code = template.format(
                 imports=imports_str,
-                main_code=indented_code
+                main_code=indented_code,
+                task_id=task.id,
+                description=task.description,
+                plan_id=task.plan_id
             )
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
