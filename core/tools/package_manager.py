@@ -195,7 +195,7 @@ class PackageManagerTool(BaseTool):
             str: 正確なパッケージ名、見つからない場合は元の名前
         """
         if package_name in self.python_type_hints:
-            print(f"'{package_name}'はPythonの型ヒントです。パッケージとしてインストールしません。")
+            print(f"【型ヒント検出】'{package_name}'はPythonの型ヒントです。typingモジュールからインポートしてください。パッケージとしてインストールしません。")
             return f"typing.{package_name}"
             
         try:
@@ -228,7 +228,7 @@ class PackageManagerTool(BaseTool):
     def _handle_install(self, package: str, version: str = None, **kwargs) -> ToolResult:
         """パッケージをインストール"""
         if package in self.python_type_hints:
-            print(f"'{package}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
+            print(f"【型ヒント検出】'{package}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
             return ToolResult(True, f"'{package}' is a Python type hint from typing module. No installation needed.")
             
         normalized_package = self._search_pypi_package(package)
@@ -422,10 +422,11 @@ class PackageManagerTool(BaseTool):
                     continue
                     
                 if module in self.python_type_hints or module == 'typing':
+                    print(f"【型ヒント検出】'{module}'はPythonの型ヒントです。パッケージとしてインストールしません。")
                     continue
                     
                 if module in imported_type_hints:
-                    print(f"'{module}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
+                    print(f"【型ヒント検出】'{module}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
                     continue
                     
                 normalized_module = self._search_pypi_package(module)
@@ -496,9 +497,9 @@ class PackageManagerTool(BaseTool):
         if 'from typing import' not in code and 'import typing' not in code:
             for type_hint in self.python_type_hints:
                 if re.search(r'\b' + type_hint + r'\b', code):
-                    print(f"警告: コード内で'{type_hint}'が使用されていますが、'from typing import {type_hint}'がありません。")
+                    print(f"【型ヒント検出】コード内で'{type_hint}'が使用されていますが、'from typing import {type_hint}'がありません。")
                     code = f"from typing import {type_hint}\n" + code
-                    print(f"'from typing import {type_hint}'をコードに追加しました。")
+                    print(f"【自動修正】'from typing import {type_hint}'をコードに追加しました。")
                     break
         
         # 依存関係を検出
