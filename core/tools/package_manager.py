@@ -37,11 +37,15 @@ class PackageManagerTool(BaseTool):
         self.max_attempts = 2
         
         self.python_type_hints = {
-            'Dict', 'List', 'Tuple', 'Set', 'FrozenSet', 'Any', 'Optional', 'Union',
+            'List', 'Tuple', 'Set', 'FrozenSet', 'Any', 'Optional', 'Union',
             'Callable', 'Type', 'TypeVar', 'Generic', 'Iterable', 'Iterator', 'Generator',
             'Coroutine', 'AsyncIterable', 'AsyncIterator', 'Awaitable', 'ContextManager',
             'Mapping', 'MutableMapping', 'Sequence', 'MutableSequence', 'Collection',
             'Counter', 'OrderedDict', 'ChainMap', 'Deque', 'DefaultDict'
+        }
+        
+        self.special_packages = {
+            'Dict': 'dict-package'  # Dictは特別なパッケージとして扱う
         }
         
         # 一般的な依存関係のマッピング
@@ -194,6 +198,11 @@ class PackageManagerTool(BaseTool):
         Returns:
             str: 正確なパッケージ名、見つからない場合は元の名前
         """
+        if package_name in self.special_packages:
+            special_package = self.special_packages[package_name]
+            print(f"【特別パッケージ】'{package_name}'は特別なパッケージとして処理します: {special_package}")
+            return special_package
+            
         if package_name in self.python_type_hints:
             print(f"【型ヒント検出】'{package_name}'はPythonの型ヒントです。typingモジュールからインポートしてください。パッケージとしてインストールしません。")
             return f"typing.{package_name}"
@@ -227,6 +236,11 @@ class PackageManagerTool(BaseTool):
     
     def _handle_install(self, package: str, version: str = None, **kwargs) -> ToolResult:
         """パッケージをインストール"""
+        if package in self.special_packages:
+            special_package = self.special_packages[package]
+            print(f"【特別パッケージ】'{package}'は特別なパッケージとして処理します: {special_package}")
+            return ToolResult(True, f"'{package}' is a special package handled as: {special_package}")
+            
         if package in self.python_type_hints:
             print(f"【型ヒント検出】'{package}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
             return ToolResult(True, f"'{package}' is a Python type hint from typing module. No installation needed.")
@@ -420,6 +434,12 @@ class PackageManagerTool(BaseTool):
                 # 標準ライブラリのモジュールは除外
                 if self._is_stdlib_module(module):
                     continue
+                
+                if module in self.special_packages:
+                    special_package = self.special_packages[module]
+                    print(f"【特別パッケージ】'{module}'は特別なパッケージとして処理します: {special_package}")
+                    required_packages.append(special_package)
+                    continue
                     
                 if module in self.python_type_hints or module == 'typing':
                     print(f"【型ヒント検出】'{module}'はPythonの型ヒントです。パッケージとしてインストールしません。")
@@ -494,6 +514,10 @@ class PackageManagerTool(BaseTool):
 
     def ensure_dependencies(self, code: str) -> Tuple[bool, List[str], List[str]]:
         """コードの実行に必要な依存関係をすべてインストール"""
+        for special_pkg in self.special_packages:
+            if re.search(r'\b' + special_pkg + r'\b', code):
+                print(f"【特別パッケージ検出】コード内で'{special_pkg}'が使用されています。特別なパッケージとして処理します。")
+                
         if 'from typing import' not in code and 'import typing' not in code:
             for type_hint in self.python_type_hints:
                 if re.search(r'\b' + type_hint + r'\b', code):
