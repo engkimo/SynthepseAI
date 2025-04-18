@@ -30,19 +30,41 @@ def main():
             config = json.load(f)
     
     openai_api_key = os.environ.get("OPENAI_API_KEY") or config.get('openai_api_key')
-    if not openai_api_key:
+    openrouter_api_key = os.environ.get("OPENROUTER_API_KEY") or config.get('openrouter_api_key')
+    
+    llm_provider = config.get('llm_provider', 'openai')
+    
+    if llm_provider == 'openai' and not openai_api_key:
         print("警告: OpenAI APIキーが設定されていません。モックモードで実行します。")
         print("APIキーを設定するには次のいずれかの方法を使用してください：")
         print("1. 環境変数に直接設定: export OPENAI_API_KEY=your_api_key_here")
         print("2. .envファイルに設定: .envファイルに「OPENAI_API_KEY=your_api_key_here」を追加")
         print("3. configファイルに設定: config.jsonファイルに「openai_api_key」フィールドを追加")
         print("LLMはモックモードで動作中です。実際のAPIコールは行われません。")
+    elif llm_provider == 'openrouter' and not openrouter_api_key:
+        print("警告: OpenRouter APIキーが設定されていません。モックモードで実行します。")
+        print("APIキーを設定するには次のいずれかの方法を使用してください：")
+        print("1. 環境変数に直接設定: export OPENROUTER_API_KEY=your_api_key_here")
+        print("2. .envファイルに設定: .envファイルに「OPENROUTER_API_KEY=your_api_key_here」を追加")
+        print("3. configファイルに設定: config.jsonファイルに「openrouter_api_key」フィールドを追加")
+        print("LLMはモックモードで動作中です。実際のAPIコールは行われません。")
     
     # Initialize components
+    if llm_provider == 'openai':
+        api_key = openai_api_key
+        model = config.get('model', 'gpt-4-turbo')
+    elif llm_provider == 'openrouter':
+        api_key = openrouter_api_key
+        model = config.get('model', 'anthropic/claude-3-7-sonnet')
+    else:
+        api_key = openai_api_key
+        model = config.get('model', 'gpt-4-turbo')
+        
     llm = LLM(
-        api_key=openai_api_key,
-        model=config.get('model', 'gpt-4-turbo'),
-        temperature=config.get('temperature', 0.7)
+        api_key=api_key,
+        model=model,
+        temperature=config.get('temperature', 0.7),
+        provider=llm_provider
     )
     
     # ワークスペースディレクトリを作成
@@ -58,7 +80,11 @@ def main():
         device=config.get('device', 'cpu'),
         use_compatibility_mode=True,  # 互換モードを有効化
         tavily_api_key=config.get('tavily_api_key'),
-        firecrawl_api_key=config.get('firecrawl_api_key')
+        firecrawl_api_key=config.get('firecrawl_api_key'),
+        enable_multi_agent=config.get('enable_multi_agent', False),
+        specialized_agents=config.get('specialized_agents', []),
+        llm_provider=llm_provider,
+        openrouter_api_key=openrouter_api_key
     )
     
     # デバッグモードが有効な場合のログ設定

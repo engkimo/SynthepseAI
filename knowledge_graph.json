@@ -2,6 +2,5 @@
   "entity_map": {},
   "relation_map": {},
   "id_to_entity": {},
-  "id_to_relation": {},
-  "nx_edges": []
+  "id_to_relation": {}
 }

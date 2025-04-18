@@ -119,8 +119,7 @@ def main():
 result = main()
 """
 
-PERSISTENT_THINKING_TEMPLATE = '''
-# 必要なライブラリのインポート
+PERSISTENT_THINKING_TEMPLATE = r'''
 {imports}
 import os
 import json
@@ -130,157 +129,262 @@ import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+task_description = ""
+insights = []
+hypotheses = []
+conclusions = []
+
 KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
 THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
-KNOWLEDGE_GRAPH_PATH = "./knowledge_graph.json"
 
-class PersistentThinkingManager:
-    """持続思考AIとの連携を管理するクラス"""
+def load_knowledge_db():
+    try:
+        if os.path.exists(KNOWLEDGE_DB_PATH):
+            with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"知識データベース読み込みエラー: {str(e)}")
+        return {}
+
+def save_knowledge_db(knowledge_db):
+    try:
+        os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
+        with open(KNOWLEDGE_DB_PATH, 'w', encoding='utf-8') as f:
+            json.dump(knowledge_db, fp=f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"知識データベース保存エラー: {str(e)}")
+        return False
+
+def log_thought(thought_type, content):
+    try:
+        os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
+        log_entry = {
+            "timestamp": time.time(),
+            "type": thought_type,
+            "content": content
+        }
+        with open(THINKING_LOG_PATH, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
+        return True
+    except Exception as e:
+        print(f"思考ログ記録エラー: {str(e)}")
+        return False
+
+def update_knowledge(subject, fact, confidence=0.8, source=None):
+    try:
+        knowledge_db = load_knowledge_db()
+        
+        if subject not in knowledge_db:
+            knowledge_db[subject] = {}
+            original_fact = None
+        else:
+            original_fact = knowledge_db[subject].get("fact")
+            
+        existing_confidence = knowledge_db[subject].get("confidence", 0)
+        if existing_confidence > confidence + 0.1:
+            log_thought("knowledge_update_rejected", {
+                "subject": subject,
+                "existing_fact": original_fact,
+                "new_fact": fact,
+                "existing_confidence": existing_confidence,
+                "new_confidence": confidence,
+                "reason": "新しい情報の確信度が既存の情報より低いため更新を拒否"
+            })
+            return False
+        
+        knowledge_db[subject]["fact"] = fact
+        knowledge_db[subject]["confidence"] = confidence
+        knowledge_db[subject]["last_updated"] = time.time()
+        
+        if source:
+            knowledge_db[subject]["source"] = source
+        
+        save_success = save_knowledge_db(knowledge_db)
+        
+        log_thought("knowledge_update", {
+            "subject": subject,
+            "original_fact": original_fact,
+            "new_fact": fact,
+            "confidence": confidence,
+            "source": source,
+            "success": save_success
+        })
+        
+        return save_success
+    except Exception as e:
+        print(f"知識更新エラー: {str(e)}")
+        return False
+
+def add_insight(insight, confidence=0.7):
+    global insights
+    insights.append({
+        "content": insight,
+        "confidence": confidence,
+        "timestamp": time.time()
+    })
     
-    def __init__(self, task_description: str):
-        """
-        持続思考マネージャーの初期化
+    log_thought("task_insight", {
+        "task": task_description,
+        "insight": insight,
+        "confidence": confidence
+    })
+
+def add_hypothesis(hypothesis, confidence=0.6):
+    global hypotheses
+    hypotheses.append({
+        "content": hypothesis,
+        "confidence": confidence,
+        "timestamp": time.time(),
+        "verified": False
+    })
+    
+    log_thought("task_hypothesis", {
+        "task": task_description,
+        "hypothesis": hypothesis,
+        "confidence": confidence
+    })
+
+def verify_hypothesis(hypothesis, verified, evidence, confidence=0.7):
+    global hypotheses
+    
+    for h in hypotheses:
+        if h["content"] == hypothesis:
+            h["verified"] = verified
+            h["evidence"] = evidence
+            h["verification_confidence"] = confidence
+            h["verification_time"] = time.time()
+            break
+    
+    log_thought("hypothesis_verification", {
+        "task": task_description,
+        "hypothesis": hypothesis,
+        "verified": verified,
+        "evidence": evidence,
+        "confidence": confidence
+    })
+    
+    if verified and confidence > 0.7:
+        update_knowledge(
+            f"検証済み仮説: {hypothesis[:50]}...",
+            f"検証結果: {evidence}",
+            confidence,
+            "hypothesis_verification"
+        )
+
+def verify_hypothesis_with_simulation(hypothesis, simulation_code):
+    global task_description
+    
+    result = {
+        "hypothesis": hypothesis,
+        "verified": False,
+        "confidence": 0.0,
+        "evidence": [],
+        "timestamp": time.time()
+    }
+    
+    try:
+        local_vars = {}
+        exec(simulation_code, {"__builtins__": __builtins__}, local_vars)
         
-        Args:
-            task_description: 現在のタスクの説明
-        """
-        self.task_description = task_description
-        self.knowledge_db = self.load_knowledge_db()
-        self.task_start_time = time.time()
-        self.insights = []
-        self.hypotheses = []
-        self.conclusions = []
+        simulation_result = local_vars.get("result", None)
         
-        self.log_thought("task_execution_start", {
-            "task": self.task_description,
+        if simulation_result:
+            result["simulation_result"] = str(simulation_result)
+            result["verified"] = local_vars.get("verified", False)
+            result["confidence"] = local_vars.get("confidence", 0.5)
+            result["evidence"] = local_vars.get("evidence", [])
+            
+            log_thought("hypothesis_simulation", {
+                "task": task_description,
+                "hypothesis": hypothesis,
+                "verified": result["verified"],
+                "confidence": result["confidence"],
+                "evidence": result["evidence"]
+            })
+            
+            if result["verified"] and result["confidence"] > 0.7:
+                subject = f"検証済み仮説: {hypothesis[:50]}..."
+                fact = f"検証結果: {result['simulation_result']}"
+                update_knowledge(subject, fact, result["confidence"], "hypothesis_simulation")
+        else:
+            log_thought("hypothesis_simulation_warning", {
+                "task": task_description,
+                "hypothesis": hypothesis,
+                "warning": "シミュレーション結果が取得できませんでした"
+            })
+    except Exception as e:
+        result["error"] = str(e)
+        result["traceback"] = traceback.format_exc()
+        log_thought("hypothesis_simulation_error", {
+            "task": task_description,
+            "hypothesis": hypothesis,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        })
+        
+    return result
+
+def add_conclusion(conclusion, confidence=0.8):
+    global conclusions
+    conclusions.append({
+        "content": conclusion,
+        "confidence": confidence,
+        "timestamp": time.time()
+    })
+    
+    log_thought("task_conclusion", {
+        "task": task_description,
+        "conclusion": conclusion,
+        "confidence": confidence
+    })
+    
+    if confidence > 0.7:
+        update_knowledge(
+            f"タスク結論: {task_description[:50]}...",
+            conclusion,
+            confidence,
+            "task_conclusion"
+        )
+
+def request_multi_agent_discussion(topic):
+    try:
+        log_thought("multi_agent_discussion_request", {
+            "topic": topic,
+            "timestamp": time.time()
+        })
+        
+        return {
+            "topic": topic,
+            "requested": True,
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        print(f"マルチエージェント討論リクエストエラー: {str(e)}")
+        return {}
+
+def main():
+    global task_description, insights, hypotheses, conclusions
+    
+    try:
+        task_info = globals().get('task_info', {})
+        task_description = task_info.get('description', 'Unknown task')
+        task_start_time = time.time()
+        
+        log_thought("task_execution_start", {
+            "task": task_description,
             "timestamp_readable": datetime.datetime.now().isoformat()
         })
         
-        self.related_knowledge = self._get_initial_knowledge()
-        
-        if self.related_knowledge:
-            self.log_thought("initial_knowledge_analysis", {
-                "task": self.task_description,
-                "related_knowledge_count": len(self.related_knowledge),
-                "knowledge_subjects": [k["subject"] for k in self.related_knowledge]
-            })
-    
-    def load_knowledge_db(self) -> Dict:
-        """知識データベースを読み込む"""
+        keywords = [word for word in task_description.lower().split() if len(word) > 3]
+        related_knowledge = []
         try:
-            if os.path.exists(KNOWLEDGE_DB_PATH):
-                with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return {}
-        except Exception as e:
-            print(f"知識データベース読み込みエラー: {str(e)}")
-            return {}
-    
-    def save_knowledge_db(self, knowledge_db: Dict) -> bool:
-        """知識データベースを保存する"""
-        try:
-            os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
-            
-            with open(KNOWLEDGE_DB_PATH, 'w', encoding='utf-8') as f:
-                json.dump(knowledge_db, indent=2, ensure_ascii=False, f)
-            return True
-        except Exception as e:
-            print(f"知識データベース保存エラー: {str(e)}")
-            return False
-    
-    def log_thought(self, thought_type: str, content: Dict[str, Any]) -> bool:
-        """思考ログに記録する"""
-        try:
-            os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
-            
-            log_entry = {
-                "timestamp": time.time(),
-                "type": thought_type,
-                "content": content
-            }
-            with open(THINKING_LOG_PATH, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
-            return True
-        except Exception as e:
-            print(f"思考ログ記録エラー: {str(e)}")
-            return False
-    
-    def update_knowledge(self, subject: str, fact: str, confidence: float = 0.8, source: str = None) -> bool:
-        """
-        知識を更新する
-        
-        Args:
-            subject: 知識の主題
-            fact: 事実や知識の内容
-            confidence: 確信度 (0.0-1.0)
-            source: 情報源（ある場合）
-            
-        Returns:
-            bool: 更新が成功したかどうか
-        """
-        try:
-            knowledge_db = self.load_knowledge_db()
-            
-            if subject not in knowledge_db:
-                knowledge_db[subject] = {}
-                original_fact = None
-            else:
-                original_fact = knowledge_db[subject].get("fact")
-                
-                existing_confidence = knowledge_db[subject].get("confidence", 0)
-                if existing_confidence > confidence + 0.1:
-                    self.log_thought("knowledge_update_rejected", {
-                        "subject": subject,
-                        "existing_fact": original_fact,
-                        "new_fact": fact,
-                        "existing_confidence": existing_confidence,
-                        "new_confidence": confidence,
-                        "reason": "新しい情報の確信度が既存の情報より低いため更新を拒否"
-                    })
-                    return False
-            
-            knowledge_db[subject]["fact"] = fact
-            knowledge_db[subject]["confidence"] = confidence
-            knowledge_db[subject]["last_updated"] = time.time()
-            
-            if source:
-                knowledge_db[subject]["source"] = source
-            
-            save_success = self.save_knowledge_db(knowledge_db)
-            
-            self.log_thought("knowledge_update", {
-                "subject": subject,
-                "original_fact": original_fact,
-                "new_fact": fact,
-                "confidence": confidence,
-                "source": source,
-                "success": save_success
-            })
-            
-            self.knowledge_db = knowledge_db
-            
-            return save_success
-        except Exception as e:
-            print(f"知識更新エラー: {str(e)}")
-            return False
-    
-    def get_knowledge(self, subject: str) -> Optional[str]:
-        """特定の主題に関する知識を取得する"""
-        try:
-            return self.knowledge_db.get(subject, {}).get("fact")
-        except Exception as e:
-            print(f"知識取得エラー: {str(e)}")
-            return None
-    
-    def get_related_knowledge(self, keywords: List[str], limit: int = 5) -> List[Dict]:
-        """キーワードに関連する知識を取得する"""
-        try:
-            results = []
-            
-            for subject, data in self.knowledge_db.items():
+            knowledge_db = load_knowledge_db()
+            for subject, data in knowledge_db.items():
                 for keyword in keywords:
                     if keyword.lower() in subject.lower() or (data.get("fact") and keyword.lower() in data.get("fact", "").lower()):
-                        results.append({
+                        related_knowledge.append({
                             "subject": subject,
                             "fact": data.get("fact"),
                             "confidence": data.get("confidence", 0),
@@ -288,223 +392,76 @@ class PersistentThinkingManager:
                             "source": data.get("source")
                         })
                         break
-                        
-                if len(results) >= limit:
-                    break
-                    
-            return results
         except Exception as e:
             print(f"関連知識取得エラー: {str(e)}")
-            return []
-    
-    def add_insight(self, insight: str, confidence: float = 0.7) -> None:
-        """タスク実行中の洞察を追加"""
-        self.insights.append({
-            "content": insight,
-            "confidence": confidence,
-            "timestamp": time.time()
-        })
         
-        self.log_thought("task_insight", {
-            "task": self.task_description,
-            "insight": insight,
-            "confidence": confidence
-        })
-    
-    def add_hypothesis(self, hypothesis: str, evidence: List[str] = None) -> None:
-        """仮説を追加"""
-        hypothesis_entry = {
-            "content": hypothesis,
-            "evidence": evidence or [],
-            "timestamp": time.time(),
-            "verified": False
-        }
-        
-        self.hypotheses.append(hypothesis_entry)
-        
-        self.log_thought("hypothesis_formation", {
-            "task": self.task_description,
-            "hypothesis": hypothesis,
-            "evidence": evidence or []
-        })
-    
-    def verify_hypothesis(self, hypothesis_idx: int, verified: bool, conclusion: str) -> None:
-        """仮説を検証"""
-        if 0 <= hypothesis_idx < len(self.hypotheses):
-            self.hypotheses[hypothesis_idx]["verified"] = verified
-            self.hypotheses[hypothesis_idx]["conclusion"] = conclusion
-            
-            self.log_thought("hypothesis_verification", {
-                "task": self.task_description,
-                "hypothesis": self.hypotheses[hypothesis_idx]["content"],
-                "verified": verified,
-                "conclusion": conclusion
-            })
-    
-    def add_conclusion(self, conclusion: str, confidence: float = 0.8) -> None:
-        """タスクの結論を追加"""
-        self.conclusions.append({
-            "content": conclusion,
-            "confidence": confidence,
-            "timestamp": time.time()
-        })
-        
-        self.log_thought("task_conclusion", {
-            "task": self.task_description,
-            "conclusion": conclusion,
-            "confidence": confidence
-        })
-        
-        if confidence >= 0.7:
-            subject = f"結論: {self.task_description}"
-            self.update_knowledge(subject, conclusion, confidence)
-    
-    def finalize_task(self, result: Any) -> None:
-        """タスクの完了を記録"""
-        execution_time = time.time() - self.task_start_time
-        
-        result_str = str(result) if result is not None else "No result"
-        
-        self.log_thought("task_execution_complete", {
-            "task": self.task_description,
-            "result": result_str,
-            "execution_time_seconds": execution_time,
-            "insights_count": len(self.insights),
-            "hypotheses_count": len(self.hypotheses),
-            "conclusions_count": len(self.conclusions),
-            "timestamp_readable": datetime.datetime.now().isoformat()
-        })
-        
-        if self.conclusions:
-            best_conclusion = max(self.conclusions, key=lambda x: x["confidence"])
-            subject = f"タスク結論: {self.task_description}"
-            self.update_knowledge(
-                subject=subject,
-                fact=best_conclusion["content"],
-                confidence=best_conclusion["confidence"]
-            )
-    
-    def _get_initial_knowledge(self) -> List[Dict]:
-        """タスクに関連する初期知識を取得"""
-        keywords = self._extract_keywords(self.task_description)
-        
-        return self.get_related_knowledge(keywords, limit=10)
-    
-    def _extract_keywords(self, text: str) -> List[str]:
-        """テキストからキーワードを抽出"""
-        words = re.findall(r'\\b\\w+\\b', text.lower())
-        return [w for w in words if len(w) > 3]
-    
-    def get_thinking_history(self, limit: int = 20) -> List[Dict]:
-        """最近の思考履歴を取得"""
-        try:
-            if not os.path.exists(THINKING_LOG_PATH):
-                return []
-                
-            history = []
-            with open(THINKING_LOG_PATH, 'r', encoding='utf-8') as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        history.append(entry)
-                    except:
-                        continue
-            
-            return sorted(history, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
-        except Exception as e:
-            print(f"思考履歴取得エラー: {str(e)}")
-            return []
-    
-    def search_thinking_log(self, query: str, limit: int = 10) -> List[Dict]:
-        """思考ログを検索"""
-        try:
-            if not os.path.exists(THINKING_LOG_PATH):
-                return []
-                
-            results = []
-            with open(THINKING_LOG_PATH, 'r', encoding='utf-8') as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        entry_str = json.dumps(entry, ensure_ascii=False).lower()
-                        if query.lower() in entry_str:
-                            results.append(entry)
-                    except:
-                        continue
-            
-            return sorted(results, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
-        except Exception as e:
-            print(f"思考ログ検索エラー: {str(e)}")
-            return []
-
-def main():
-    try:
-        task_info = globals().get('task_info', {})
-        task_description = getattr(task_info, 'description', 'Unknown task')
-        
-        thinking = PersistentThinkingManager(task_description)
-        
-        if thinking.related_knowledge:
-            print(f"タスク '{task_description}' に関連する既存知識が {len(thinking.related_knowledge)} 件見つかりました:")
-            for i, knowledge in enumerate(thinking.related_knowledge):
+        if related_knowledge:
+            print(f"タスク '{task_description}' に関連する既存知識が {len(related_knowledge)} 件見つかりました:")
+            for i, knowledge in enumerate(related_knowledge):
                 print(f"  {i+1}. {knowledge['subject']}: {knowledge['fact']} (確信度: {knowledge['confidence']:.2f})")
+            
+            if len(related_knowledge) >= 2:
+                hypothesis = f"タスク '{task_description}' は {related_knowledge[0]['subject']} と {related_knowledge[1]['subject']} に関連している可能性がある"
+                add_hypothesis(hypothesis, confidence=0.6)
         else:
             print(f"タスク '{task_description}' に関連する既存知識は見つかりませんでした。")
-            thinking.add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
+            add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
+            
+            request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
         
-        # メイン処理
 {main_code}
         
-        thinking.finalize_task(result if 'result' in locals() else "Task completed successfully")
+        log_thought("task_execution_complete", {
+            "task": task_description,
+            "execution_time": time.time() - task_start_time,
+            "insights_count": len(insights),
+            "hypotheses_count": len(hypotheses),
+            "conclusions_count": len(conclusions)
+        })
         
         return result if 'result' in locals() else "Task completed successfully"
         
     except ImportError as e:
-        # 必要なパッケージがない場合のエラー処理
         missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
         error_msg = f"エラー: 必要なモジュール '{missing_module}' がインストールされていません。"
         print(error_msg)
         print(f"次のコマンドでインストールしてください: pip install {missing_module}")
         
         try:
-            thinking = PersistentThinkingManager("エラー発生タスク")
-            thinking.log_thought("task_execution_error", {
+            log_thought("task_execution_error", {
                 "task": task_description,
                 "error_type": "ImportError",
                 "error_message": error_msg
             })
         except:
             pass
-        
+            
         return error_msg
         
     except Exception as e:
-        # その他のエラー処理
         error_details = traceback.format_exc()
         error_msg = f"エラー: {str(e)}"
         print(error_msg)
         print(error_details)
         
         try:
-            thinking = PersistentThinkingManager("エラー発生タスク")
-            thinking.log_thought("task_execution_error", {
+            log_thought("task_execution_error", {
                 "task": task_description,
                 "error_type": type(e).__name__,
                 "error_message": str(e),
                 "traceback": error_details
             })
             
-            thinking.update_knowledge(
+            update_knowledge(
                 f"エラーパターン: {type(e).__name__}",
                 f"タスク実行中に発生: {str(e)}",
                 confidence=0.7
             )
         except:
             pass
-        
+            
         return error_msg
 
-# スクリプト実行
 if __name__ == "__main__":
     result = main()
 '''
@@ -577,48 +534,18 @@ def get_template_for_task(task_description, required_libraries=None):
                         "required_libraries": required_libraries
                     }
                 }
-                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
     except Exception as e:
         print(f"テンプレート選択のログ記録に失敗: {str(e)}")
     
     # テンプレート内のプレースホルダーを検証
-    import re
+    template = template.replace("{", "{{").replace("}", "}}")
     
-    # 念のため、テンプレート内の中括弧をエスケープ（f文字列内の中括弧のみ）
-    template = template.replace("{{", "{{").replace("}}", "}}")
+    template = template.replace("{{imports}}", "{imports}")
+    template = template.replace("{{main_code}}", "{main_code}")
     
-    f_string_patterns = [
-        ('f"Error: {str(e)}"', 'f"Error: {{str(e)}}"'),
-        ('f"エラー: {str(e)}"', 'f"エラー: {{str(e)}}"'),
-        ('f"', 'f"'),
-        ('{str(e)}', '{{str(e)}}'),
-        ('{e}', '{{e}}'),
-        ('{type(e).__name__}', '{{type(e).__name__}}'),
-        ('{result=}', '{{result=}}'),
-        ('{val=}', '{{val=}}')
-    ]
-    
-    template = re.sub(r'{self\.([^}]*)}', r'{{self.\1}}', template)
-    template = re.sub(r'{task_description}', r'{{task_description}}', template)
-    template = re.sub(r'{missing_module}', r'{{missing_module}}', template)
-    template = re.sub(r'{str\(e\)}', r'{{str(e)}}', template)
-    template = re.sub(r'{type\(e\)\.__name__}', r'{{type(e).__name__}}', template)
-    
-    for pattern, replacement in f_string_patterns:
-        template = template.replace(pattern, replacement)
-    
-    template = template.replace("{imports}", "##IMPORTS##")
-    template = template.replace("{main_code}", "##MAIN_CODE##")
-    
-    remaining_placeholders = re.findall(r'{([^{}]*)}', template)
-    
-    if remaining_placeholders:
-        print(f"Warning: Escaping remaining placeholders: {remaining_placeholders}")
-        for placeholder in remaining_placeholders:
-            template = template.replace(f"{{{placeholder}}}", f"{{{{{placeholder}}}}}")
-    
-    template = template.replace("##IMPORTS##", "{imports}")
-    template = template.replace("##MAIN_CODE##", "{main_code}")
+    template = template.replace('print(f"Error: {{{{str(e)}}}}")', 'print(f"Error: {str(e)}")')
+    template = template.replace('print(f"エラー: {{{{str(e)}}}}")', 'print(f"エラー: {str(e)}")')
     
     if "{imports}" not in template or "{main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
@@ -632,7 +559,7 @@ def main():
         # メイン処理
 {main_code}
     except Exception as e:
-        print(f"Error: {{str(e)}}")
+        print(f"Error: {str(e)}")
         return str(e)
     
     return "Task completed successfully"

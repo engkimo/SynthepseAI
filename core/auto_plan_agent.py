@@ -84,11 +84,12 @@ class AutoPlanAgent(ToolAgent):
         }
         
         if template:
-            plan_params["template_info"] = {
+            import json
+            plan_params["template_info"] = json.dumps({
                 "task_type": template["task_type"],
                 "confidence": template["confidence"],
                 "keywords": template.get("keywords", [])
-            }
+            })
             
         plan_result = self.planner.execute(**plan_params)
         
@@ -128,6 +129,14 @@ class AutoPlanAgent(ToolAgent):
                     
                     if modules:
                         code_params["modules"] = modules
+                    
+                    if self.persistent_thinking:
+                        try:
+                            knowledge = self.persistent_thinking.get_knowledge_for_script(task.description)
+                            if knowledge and (knowledge.get("related_knowledge") or knowledge.get("thinking_insights")):
+                                code_params["thinking_knowledge"] = knowledge
+                        except Exception as e:
+                            print(f"継続的思考の知見取得エラー: {str(e)}")
                         
                     code_result = self.planner.execute(**code_params)
                     
@@ -183,6 +192,22 @@ class AutoPlanAgent(ToolAgent):
                                     print(f"Stored task template for {task_type}")
                             except Exception as e:
                                 print(f"Error storing task template: {str(e)}")
+                        
+                        if self.persistent_thinking:
+                            try:
+                                task_obj = self.task_db.get_task(task.id)
+                                if task_obj and task_obj.result:
+                                    self.persistent_thinking._log_thought("script_execution_result", {
+                                        "task_id": task.id,
+                                        "description": task_obj.description,
+                                        "result": task_obj.result,
+                                        "status": "success"
+                                    })
+                                    self.persistent_thinking._extract_and_store_knowledge(
+                                        task_obj.description, task_obj.result
+                                    )
+                            except Exception as e:
+                                print(f"Error updating persistent thinking: {str(e)}")
                                 
                         break  # タスク成功
                     
@@ -212,8 +237,9 @@ class AutoPlanAgent(ToolAgent):
                 task_results = [task.result for task in plan_tasks if task.status == TaskStatus.COMPLETED]
                 
                 def run_thinking():
-                    self.persistent_thinking.execute_task(goal)
-                    self.persistent_thinking.continuous_thinking(duration_seconds=60)
+                    if self.persistent_thinking:
+                        self.persistent_thinking.execute_task(goal)
+                        self.persistent_thinking.continuous_thinking(duration_seconds=60)
                 
                 threading.Thread(target=run_thinking).start()
                 print("持続思考AIによる継続的思考を開始しました（バックグラウンド実行中）")
@@ -226,6 +252,10 @@ class AutoPlanAgent(ToolAgent):
         """失敗したタスクを自動修復（学習機能強化版）"""
         task = self.task_db.get_task(task_id)
         
+        if task is None:
+            print(f"Task {task_id} not found")
+            return False
+            
         if task.status != TaskStatus.FAILED:
             return True  # タスクは失敗していない
         
@@ -254,10 +284,14 @@ class AutoPlanAgent(ToolAgent):
                     self.task_db.update_task_code(task_id, fixed_code)
                     
                     # 修正したコードを実行
-                    execute_result = self.project_executor.execute(
-                        command="execute_task",
-                        task_id=task_id
-                    )
+                    if self.project_executor:
+                        execute_result = self.project_executor.execute(
+                            command="execute_task",
+                            task_id=task_id
+                        )
+                    else:
+                        print("Project executor not set")
+                        return False
                     
                     if execute_result.success:
                         print(f"Task {task_id} execution succeeded with learned fix")
@@ -269,13 +303,14 @@ class AutoPlanAgent(ToolAgent):
                         )
                         
                         # エラーパターンの成功カウントを更新（学習強化）
-                        self.graph_rag.store_error_pattern(
-                            error_message=error_message,
-                            error_type=self._classify_error(error_message),
-                            original_code=task.code,
-                            fixed_code=fixed_code,
-                            context=task.description
-                        )
+                        if error_message:
+                            self.graph_rag.store_error_pattern(
+                                error_message=error_message,
+                                error_type=self._classify_error(error_message),
+                                original_code=task.code,
+                                fixed_code=fixed_code,
+                                context=task.description
+                            )
                         
                         return True
                     else:
@@ -285,7 +320,9 @@ class AutoPlanAgent(ToolAgent):
         
         # ==== 依存パッケージ問題の対応 ====
         # エラーメッセージから不足パッケージを検出
-        missing_packages = env.extract_missing_packages(error_message)
+        missing_packages = []
+        if error_message and env:
+            missing_packages = env.extract_missing_packages(error_message)
         
         # 不足パッケージがある場合はインストール
         if missing_packages:
@@ -293,10 +330,14 @@ class AutoPlanAgent(ToolAgent):
             env.install_requirements(missing_packages)
             
             # パッケージインストール後に再実行
-            execute_result = self.project_executor.execute(
-                command="execute_task",
-                task_id=task_id
-            )
+            if self.project_executor:
+                execute_result = self.project_executor.execute(
+                    command="execute_task",
+                    task_id=task_id
+                )
+            else:
+                print("Project executor not set")
+                return False
             
             if execute_result.success:
                 print(f"Task {task_id} execution succeeded after installing missing packages")
@@ -324,7 +365,9 @@ class AutoPlanAgent(ToolAgent):
         print(f"Trying to repair task {task_id} by modifying code")
         
         # エラー種別の分析
-        error_type = self._classify_error(error_message)
+        error_type = "unknown"
+        if error_message:
+            error_type = self._classify_error(error_message)
         
         # LLMを使用してエラーを分析し、コードを修正
         repair_prompt = f"""
@@ -355,10 +398,14 @@ class AutoPlanAgent(ToolAgent):
         self.task_db.update_task_code(task_id, fixed_code)
         
         # 修正したコードを実行
-        execute_result = self.project_executor.execute(
-            command="execute_task",
-            task_id=task_id
-        )
+        if self.project_executor:
+            execute_result = self.project_executor.execute(
+                command="execute_task",
+                task_id=task_id
+            )
+        else:
+            print("Project executor not set")
+            return False
         
         if execute_result.success:
             print(f"Task {task_id} execution succeeded after code repair")

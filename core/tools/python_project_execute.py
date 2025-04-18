@@ -126,7 +126,7 @@ def main():
     try:
 {main_code}
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {{{{str(e)}}}}")
         return str(e)
     
     return "Task completed successfully"
@@ -135,9 +135,20 @@ if __name__ == "__main__":
     result = main()
 """
             
+            task_info_var = f"""
+task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id}"
+}}
+"""
+            
             formatted_code = template.format(
                 imports=imports_str,
-                main_code=indented_code
+                main_code=indented_code,
+                task_id=task.id,
+                description=task.description,
+                plan_id=task.plan_id
             )
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
@@ -148,7 +159,7 @@ def main():
     try:
 {indented_code}
     except Exception as e:
-        print(f"Error: {{str(e)}}")
+        print(f"Error: {{{{str(e)}}}}")
         return str(e)
     
     return "Task completed successfully"
@@ -157,8 +168,8 @@ if __name__ == "__main__":
     result = main()
 """
         
-        # コードの先頭にタスク情報を追加
-        full_code = task_info_code + "\n" + formatted_code
+        # コードの先頭にタスク情報を追加 - task_info_code は不要（テンプレートに含まれている）
+        full_code = formatted_code
         
         # スクリプトを保存（自動フォーマット処理が適用される）
         print(f"Formatting and saving task script: {script_name}")
