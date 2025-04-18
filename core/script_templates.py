@@ -129,6 +129,41 @@ import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+def get_related_knowledge(keywords, limit=5):
+    """
+    キーワードに関連する知識を取得
+    
+    Args:
+        keywords: 検索キーワードのリスト
+        limit: 取得する最大件数
+        
+    Returns:
+        関連知識のリスト
+    """
+    try:
+        knowledge_db = load_knowledge_db()
+        related = []
+        
+        for subject, data in knowledge_db.items():
+            for keyword in keywords:
+                if keyword.lower() in subject.lower() or (
+                    data.get("fact") and keyword.lower() in data.get("fact", "").lower()
+                ):
+                    related.append({
+                        "subject": subject,
+                        "fact": data.get("fact"),
+                        "confidence": data.get("confidence", 0),
+                        "last_updated": data.get("last_updated"),
+                        "source": data.get("source")
+                    })
+                    break
+                    
+        related.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+        return related[:limit]
+    except Exception as e:
+        print(f"関連知識取得エラー: {str(e)}")
+        return []
+
 task_description = ""
 insights = []
 hypotheses = []
