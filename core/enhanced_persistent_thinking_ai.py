@@ -54,6 +54,10 @@ class EnhancedPersistentThinkingAI:
             use_compatibility_mode: DGL/PyTorch非依存の互換モードを使用するかどうか
             tavily_api_key: TavilyのAPIキー
             firecrawl_api_key: FirecrawlのAPIキー
+            enable_multi_agent: マルチエージェント討論機能を有効にするかどうか
+            specialized_agents: 特化エージェント設定のリスト
+            llm_provider: LLMプロバイダー ("openai" または "openrouter")
+            openrouter_api_key: OpenRouter APIキー
         """
         if llm_provider == "openai":
             api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
@@ -99,6 +103,9 @@ class EnhancedPersistentThinkingAI:
         
         self.enable_multi_agent = enable_multi_agent
         self.multi_agent_discussion = None
+        self.llm_provider = llm_provider
+        self.openrouter_api_key = openrouter_api_key
+        
         if enable_multi_agent:
             try:
                 from .multi_agent_discussion import MultiAgentDiscussion, DiscussionAgent
@@ -109,7 +116,13 @@ class EnhancedPersistentThinkingAI:
                 
                 if specialized_agents:
                     for agent_config in specialized_agents:
-                        agent = DiscussionAgent(**agent_config)
+                        agent_params = agent_config.copy()
+                        provider = agent_params.pop('provider', 'openai')
+                        
+                        if provider == 'openrouter' and self.openrouter_api_key:
+                            agent_params['api_key'] = self.openrouter_api_key
+                        
+                        agent = DiscussionAgent(**agent_params)
                         self.multi_agent_discussion.add_agent(agent)
             except ImportError:
                 print("マルチエージェント討論機能を有効にするには langchain をインストールしてください")

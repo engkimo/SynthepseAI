@@ -23,6 +23,8 @@ class DiscussionAgent:
         model_name: str = "gpt-3.5-turbo",
         temperature: float = 0.7,
         api_key: Optional[str] = None,
+        provider: str = "openai",
+        llm: Optional[BaseChatModel] = None,
     ):
         """
         ディスカッションエージェントの初期化
@@ -33,20 +35,46 @@ class DiscussionAgent:
             expertise: エージェントの専門分野リスト
             model_name: 使用するLLMモデル名
             temperature: 生成の温度
-            api_key: OpenAI APIキー
+            api_key: APIキー
+            provider: プロバイダー名 ("openai" または "openrouter")
+            llm: 既存のLLMインスタンス (指定された場合はこれを使用)
         """
         self.name = name
         self.role = role
         self.expertise = expertise
         
-        if not api_key:
-            api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
-        
-        self.llm = ChatOpenAI(
-            model_name=model_name,
-            temperature=temperature,
-            openai_api_key=api_key
-        )
+        if llm is not None:
+            self.llm = llm
+        else:
+            if not api_key:
+                if provider == "openai":
+                    api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
+                elif provider == "openrouter":
+                    api_key = os.environ.get("OPENROUTER_API_KEY", "dummy_key_for_testing")
+                else:
+                    api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
+            
+            if provider == "openrouter":
+                try:
+                    from core.openrouter_integration import OpenRouterChatModel
+                    self.llm = OpenRouterChatModel(
+                        api_key=api_key,
+                        model_name=model_name,
+                        temperature=temperature
+                    )
+                except (ImportError, ValueError):
+                    print(f"OpenRouterChatModelのインポートに失敗しました。OpenAIを使用します。")
+                    self.llm = ChatOpenAI(
+                        model_name="gpt-3.5-turbo",
+                        temperature=temperature,
+                        openai_api_key=api_key
+                    )
+            else:
+                self.llm = ChatOpenAI(
+                    model_name=model_name,
+                    temperature=temperature,
+                    openai_api_key=api_key
+                )
         
         self.memory = ConversationBufferMemory(return_messages=True)
         
