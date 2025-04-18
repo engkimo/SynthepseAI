@@ -881,16 +881,43 @@ if __name__ == "__main__":
             return False
     
     def _extract_json(self, text: str) -> str:
-        """テキストからJSONを抽出"""
+        """テキストからJSONを抽出し、必要に応じて修正"""
         # JSON配列を検索
         json_match = re.search(r'\[[\s\S]*\]', text)
         if json_match:
-            return json_match.group(0)
+            json_str = json_match.group(0)
+            try:
+                json.loads(json_str)
+                return json_str
+            except json.JSONDecodeError as e:
+                print(f"JSONの解析エラー: {str(e)}")
+                fixed_json = self._fix_json_syntax(json_str)
+                return fixed_json
         
         # JSON オブジェクトを検索
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
-            return json_match.group(0)
+            json_str = json_match.group(0)
+            try:
+                json.loads(json_str)
+                return json_str
+            except json.JSONDecodeError as e:
+                print(f"JSONの解析エラー: {str(e)}")
+                fixed_json = self._fix_json_syntax(json_str)
+                return fixed_json
         
         # JSONが見つからない場合は元のテキストを返す
         return text
+        
+    def _fix_json_syntax(self, json_str: str) -> str:
+        """一般的なJSON構文エラーを修正"""
+        json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+        
+        json_str = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)(\s*:)', r'\1"\2"\3', json_str)
+        
+        json_str = re.sub(r':\s*([a-zA-Z][a-zA-Z0-9_]*)\s*([,}])', r': "\1"\2', json_str)
+        
+        json_str = re.sub(r'([{,]\s*"[^"]*)\s*:\s*([^",{}\[\]]+)([,}])', r'\1": "\2"\3', json_str)
+        
+        print(f"JSONを修正しました: {json_str[:100]}...")
+        return json_str
