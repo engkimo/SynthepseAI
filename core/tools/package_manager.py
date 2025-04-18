@@ -7,6 +7,8 @@ import pkg_resources
 from typing import List, Dict, Any, Tuple, Set
 import re
 import time
+import requests
+from bs4 import BeautifulSoup
 
 from .base_tool import BaseTool, ToolResult
 
@@ -49,6 +51,21 @@ class PackageManagerTool(BaseTool):
             "torch": ["numpy"],
             "nltk": [],
             "openpyxl": [],
+            "sklearn": ["scikit-learn"],
+            "talib": ["ta-lib"],
+            "cv2": ["opencv-python"],
+            "pil": ["pillow"],
+        }
+        
+        self.pypi_name_mapping = {
+            "sklearn": "scikit-learn",
+            "bs4": "beautifulsoup4",
+            "talib": "ta-lib", 
+            "cv2": "opencv-python",
+            "pil": "pillow",
+            "plt": "matplotlib",
+            "np": "numpy",
+            "pd": "pandas",
         }
         
         # 標準的なインストール方法が失敗した場合に使うフォールバックコマンド
@@ -159,8 +176,61 @@ class PackageManagerTool(BaseTool):
             error_details = traceback.format_exc()
             return ToolResult(False, None, f"{str(e)}\n{error_details}")
     
+    def _search_pypi_package(self, package_name: str) -> str:
+        """
+        PyPIでパッケージ名を検索し、正確な名前を取得する
+        
+        Args:
+            package_name: 検索するパッケージ名
+            
+        Returns:
+            str: 正確なパッケージ名、見つからない場合は元の名前
+        """
+        try:
+            search_url = f"https://pypi.org/pypi/{package_name}/json"
+            response = requests.get(search_url, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("info", {}).get("name", package_name)
+                
+            search_url = f"https://pypi.org/search/?q={package_name}"
+            response = requests.get(search_url, timeout=5)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                package_elements = soup.select(".package-snippet__name")
+                
+                if package_elements:
+                    return package_elements[0].text.strip()
+            
+            common_mappings = {
+                "sklearn": "scikit-learn",
+                "bs4": "beautifulsoup4",
+                "talib": "ta-lib", 
+                "cv2": "opencv-python",
+                "pil": "pillow",
+                "plt": "matplotlib",
+                "np": "numpy",
+                "pd": "pandas",
+            }
+            
+            if package_name in common_mappings:
+                return common_mappings[package_name]
+                
+            return package_name
+            
+        except Exception as e:
+            print(f"PyPI検索エラー: {str(e)}")
+            return package_name
+    
     def _handle_install(self, package: str, version: str = None, **kwargs) -> ToolResult:
         """パッケージをインストール"""
+        normalized_package = self._search_pypi_package(package)
+        if normalized_package != package:
+            print(f"パッケージ名を正規化: {package} -> {normalized_package}")
+            package = normalized_package
+            
         package_spec = package
         if version:
             package_spec = f"{package}=={version}"
@@ -325,6 +395,13 @@ class PackageManagerTool(BaseTool):
                 root_module = imp.split('.')[0]
                 modules.add(root_module)
             
+            python_type_hints = {
+                'Dict', 'List', 'Tuple', 'Set', 'FrozenSet', 'Any', 'Optional', 'Union',
+                'Callable', 'Type', 'TypeVar', 'Generic', 'Iterable', 'Iterator', 'Generator',
+                'Coroutine', 'AsyncIterable', 'AsyncIterator', 'Awaitable', 'ContextManager',
+                'Mapping', 'MutableMapping', 'Sequence', 'MutableSequence'
+            }
+            
             # 必要なパッケージのリストを作成
             required_packages = []
             for module in modules:
@@ -332,9 +409,13 @@ class PackageManagerTool(BaseTool):
                 if self._is_stdlib_module(module):
                     continue
                     
-                # 特殊なマッピング（bs4 -> beautifulsoup4など）
-                if module == "bs4":
-                    required_packages.append("beautifulsoup4")
+                if module in python_type_hints:
+                    continue
+                    
+                normalized_module = self._search_pypi_package(module)
+                if normalized_module != module:
+                    print(f"モジュール名を正規化: {module} -> {normalized_module}")
+                    required_packages.append(normalized_module)
                 else:
                     required_packages.append(module)
             
@@ -348,7 +429,7 @@ class PackageManagerTool(BaseTool):
             filtered_dependencies = set()
             for pkg in all_dependencies:
                 # 一般的な非パッケージ名をフィルタリング
-                if pkg not in ['errors', 'error', 'exceptions', 'exception', 'warnings', 'warning']:
+                if pkg not in ['errors', 'error', 'exceptions', 'exception', 'warnings', 'warning', 'data']:
                     filtered_dependencies.add(pkg)
             
             return ToolResult(True, list(filtered_dependencies))
