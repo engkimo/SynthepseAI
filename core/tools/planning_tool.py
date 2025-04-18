@@ -509,7 +509,25 @@ class PlanningTool(BaseTool):
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-        imports_text = "\n".join(imports) if imports else "# No additional imports"
+        
+        python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+        
+        processed_imports = []
+        type_hints_to_import = set()
+        
+        for imp in imports:
+            if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
+                hint = imp.strip().replace("import ", "")
+                type_hints_to_import.add(hint)
+                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+            else:
+                processed_imports.append(imp)
+        
+        if type_hints_to_import:
+            processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
+        
+        imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
@@ -748,7 +766,25 @@ if __name__ == "__main__":
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-        imports_text = "\n".join(imports) if imports else "# No additional imports"
+        
+        python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+        
+        processed_imports = []
+        type_hints_to_import = set()
+        
+        for imp in imports:
+            if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
+                hint = imp.strip().replace("import ", "")
+                type_hints_to_import.add(hint)
+                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+            else:
+                processed_imports.append(imp)
+        
+        if type_hints_to_import:
+            processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
+        
+        imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
