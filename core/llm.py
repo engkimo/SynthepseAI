@@ -96,6 +96,9 @@ class LLM:
                     raise ValueError(f"OpenRouter API returned error: {response.text}")
                     
                 return response.json()["choices"][0]["message"]["content"]
+            else:
+                print(f"未サポートのプロバイダー: {self.provider}。モックモードで実行します。")
+                return "未サポートのプロバイダーです。OpenAIまたはOpenRouterを使用してください。"
         except openai.AuthenticationError as e:
             print(f"認証エラー: {str(e)}")
             self.mock_mode = True  # 認証エラーが発生した場合、モックモードに切り替え
