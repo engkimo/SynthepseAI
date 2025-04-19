@@ -874,6 +874,12 @@ if __name__ == "__main__":
             if self._is_stdlib_module(module_name):
                 continue
                 
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            if module_name in python_type_hints:
+                print(f"⚠️ '{module_name}'はPythonの型ヒントです。'from typing import {module_name}'に変換します。")
+                continue
+                
             # モジュールが利用可能かチェック
             try:
                 # bs4は特殊ケース
