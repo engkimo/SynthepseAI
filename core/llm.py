@@ -118,6 +118,11 @@ class LLM:
         
         {description}
         
+        IMPORTANT: For Python type hints like Dict, List, Tuple, etc., always import them from the typing module like this:
+        from typing import Dict, List, Tuple, Any, Optional, Union
+        
+        NEVER use direct imports like "import Dict" as these are not packages but type hints from the typing module.
+        
         Only provide the code, no explanations or markdown.
         """
         

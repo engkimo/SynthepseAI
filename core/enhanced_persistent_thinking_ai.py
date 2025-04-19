@@ -794,7 +794,9 @@ class EnhancedPersistentThinkingAI:
             "task": task_description,
             "related_knowledge": [],
             "thinking_insights": [],
-            "hypotheses": []
+            "hypotheses": [],
+            "error_patterns": [],      # エラーパターンを追加
+            "code_examples": []        # コード例を追加
         }
         
         if not keywords:
@@ -813,7 +815,24 @@ class EnhancedPersistentThinkingAI:
                     })
                     break
         
-        related_insights = self._get_related_insights(task_description, limit=5)
+        error_insights = []
+        with open(self.log_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                    if entry.get("type") in ["task_execution_error"]:
+                        content = entry.get("content", {})
+                        error_insights.append({
+                            "error_type": content.get("error_type", "unknown"),
+                            "error_message": content.get("error_message", ""),
+                            "traceback": content.get("traceback", "")
+                        })
+                except:
+                    continue
+        
+        result["error_patterns"] = error_insights[-5:] if error_insights else []  # 最新の5つのエラーパターン
+        
+        related_insights = self._get_related_insights(task_description, limit=10)  # より多くの洞察を取得
         result["thinking_insights"] = related_insights
         
         if self.enable_multi_agent and self.multi_agent_discussion:
@@ -964,3 +983,134 @@ class EnhancedPersistentThinkingAI:
         })
         
         self.thinking_state["last_thought_time"] = time.time()
+        
+    def integrate_task_results(self, task_description: str, result: str) -> Dict[str, Any]:
+        """
+        タスク実行の結果を継続的思考プロセスに統合
+        
+        Args:
+            task_description: タスクの説明
+            result: タスク実行の結果
+            
+        Returns:
+            Dict: 統合結果の要約
+        """
+        integration_results = {
+            "knowledge_updates": [],
+            "thinking_insights": [],
+            "hypotheses_verified": []
+        }
+        
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            print(f"モックモード: タスク '{task_description}' の結果統合をシミュレートします")
+            return integration_results
+            
+        try:
+            prompt = f"""
+            以下のタスク実行結果から、重要な洞察を抽出してください:
+            
+            タスク: {task_description}
+            
+            結果:
+            {result}
+            
+            以下の形式でJSON配列として返してください:
+            [
+                {{"insight": "洞察内容", "confidence": 確信度, "relevance": "関連性の説明"}}
+            ]
+            """
+            
+            insights_json = self.llm.generate_text(prompt)
+            
+            import re
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', insights_json, re.DOTALL)
+            if json_match:
+                insights = json.loads(json_match.group(0))
+                
+                for insight in insights:
+                    content = insight.get("insight", "")
+                    confidence = insight.get("confidence", 0.5)
+                    
+                    if content and confidence > 0.6:
+                        self._log_thought("task_insight", {
+                            "task": task_description,
+                            "insight": content,
+                            "confidence": confidence
+                        })
+                        
+                        subject = f"洞察: {content[:30]}..."
+                        self._update_knowledge(
+                            subject=subject,
+                            fact=content,
+                            confidence=confidence,
+                            source="task_result_integration"
+                        )
+                        
+                        integration_results["thinking_insights"].append({
+                            "content": content,
+                            "confidence": confidence
+                        })
+            
+            hypothesis_prompt = f"""
+            以下のタスク実行結果を分析して、検証された仮説や重要な発見を抽出してください:
+            
+            タスク: {task_description}
+            
+            結果:
+            {result}
+            
+            以下の形式でJSON配列として返してください:
+            [
+                {{"hypothesis": "仮説", "verified": true/false, "evidence": "根拠", "confidence": 確信度}}
+            ]
+            """
+            
+            hypotheses_json = self.llm.generate_text(hypothesis_prompt)
+            
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', hypotheses_json, re.DOTALL)
+            if json_match:
+                hypotheses = json.loads(json_match.group(0))
+                
+                for hyp in hypotheses:
+                    hypothesis = hyp.get("hypothesis", "")
+                    verified = hyp.get("verified", False)
+                    evidence = hyp.get("evidence", "")
+                    confidence = hyp.get("confidence", 0.5)
+                    
+                    if hypothesis:
+                        self._log_thought("hypothesis_verification", {
+                            "task": task_description,
+                            "hypothesis": hypothesis,
+                            "verified": verified,
+                            "evidence": evidence,
+                            "confidence": confidence
+                        })
+                        
+                        if verified and confidence > 0.7:
+                            subject = f"検証済み仮説: {hypothesis[:30]}..."
+                            self._update_knowledge(
+                                subject=subject,
+                                fact=f"検証結果: {evidence}",
+                                confidence=confidence,
+                                source="hypothesis_verification"
+                            )
+                        
+                        integration_results["hypotheses_verified"].append({
+                            "hypothesis": hypothesis,
+                            "verified": verified,
+                            "evidence": evidence,
+                            "confidence": confidence
+                        })
+            
+            self._update_knowledge_graph(task_description, result)
+            
+            self._save_knowledge_db()
+            
+            return integration_results
+            
+        except Exception as e:
+            self._log_thought("task_integration_error", {
+                "task": task_description,
+                "error": str(e)
+            })
+            return integration_results

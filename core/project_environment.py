@@ -438,13 +438,26 @@ class ProjectEnvironment:
         no_module_pattern = r"No module named '([^']+)'"
         matches = re.findall(no_module_pattern, error_message)
         
+        package_mapping = {
+            "bs4": "beautifulsoup4",
+            "sklearn": "scikit-learn",
+            "cv2": "opencv-python",
+            "plt": "matplotlib",
+            "np": "numpy",
+            "pd": "pandas",
+        }
+        
         for match in matches:
             # モジュール名を正規化（ドットで区切られたものの最初の部分を取得）
             package = match.split('.')[0]
             
-            # bs4 -> beautifulsoup4 などの変換
-            if package == "bs4":
-                package = "beautifulsoup4"
+            if package == "Dict":
+                print(f"⚠️ 'Dict'はPythonの型ヒントであり、インストールするパッケージではありません。スキップします。")
+                continue
+                
+            if package in package_mapping:
+                package = package_mapping[package]
+                print(f"パッケージ名を正規化: {match.split('.')[0]} -> {package}")
                 
             # 標準ライブラリでない場合のみ追加
             if not self._is_stdlib_module(package):
@@ -465,7 +478,12 @@ class ProjectEnvironment:
             "warnings", "exceptions", "error", "errors", "exception", "warning"
         }
         
-        return module_name in stdlib_modules
+        python_type_hints = {
+            "typing", "Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"
+        }
+        
+        return module_name in stdlib_modules or module_name in python_type_hints
     
     def execute_with_auto_dependency_resolution(self, code: str, max_attempts: int = 3) -> Tuple[bool, Any, str]:
         """
