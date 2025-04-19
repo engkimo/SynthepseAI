@@ -37,7 +37,7 @@ class PackageManagerTool(BaseTool):
         self.max_attempts = 2
         
         self.python_type_hints = {
-            'List', 'Tuple', 'Set', 'FrozenSet', 'Any', 'Optional', 'Union',
+            'Dict', 'List', 'Tuple', 'Set', 'FrozenSet', 'Any', 'Optional', 'Union',
             'Callable', 'Type', 'TypeVar', 'Generic', 'Iterable', 'Iterator', 'Generator',
             'Coroutine', 'AsyncIterable', 'AsyncIterator', 'Awaitable', 'ContextManager',
             'Mapping', 'MutableMapping', 'Sequence', 'MutableSequence', 'Collection',
@@ -45,7 +45,6 @@ class PackageManagerTool(BaseTool):
         }
         
         self.special_packages = {
-            'Dict': 'dict-package'  # Dictは特別なパッケージとして扱う
         }
         
         # 一般的な依存関係のマッピング
