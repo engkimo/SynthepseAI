@@ -7,6 +7,8 @@ import pkg_resources
 from typing import List, Dict, Any, Tuple, Set
 import re
 import time
+import requests
+from bs4 import BeautifulSoup
 
 from .base_tool import BaseTool, ToolResult
 
@@ -34,6 +36,17 @@ class PackageManagerTool(BaseTool):
         self.install_attempts = {}
         self.max_attempts = 2
         
+        self.python_type_hints = {
+            'Dict', 'List', 'Tuple', 'Set', 'FrozenSet', 'Any', 'Optional', 'Union',
+            'Callable', 'Type', 'TypeVar', 'Generic', 'Iterable', 'Iterator', 'Generator',
+            'Coroutine', 'AsyncIterable', 'AsyncIterator', 'Awaitable', 'ContextManager',
+            'Mapping', 'MutableMapping', 'Sequence', 'MutableSequence', 'Collection',
+            'Counter', 'OrderedDict', 'ChainMap', 'Deque', 'DefaultDict'
+        }
+        
+        self.special_packages = {
+        }
+        
         # 一般的な依存関係のマッピング
         self.common_dependencies = {
             "pandas": ["numpy"],
@@ -49,6 +62,21 @@ class PackageManagerTool(BaseTool):
             "torch": ["numpy"],
             "nltk": [],
             "openpyxl": [],
+            "sklearn": ["scikit-learn"],
+            "talib": ["ta-lib"],
+            "cv2": ["opencv-python"],
+            "pil": ["pillow"],
+        }
+        
+        self.pypi_name_mapping = {
+            "sklearn": "scikit-learn",
+            "bs4": "beautifulsoup4",
+            "talib": "ta-lib", 
+            "cv2": "opencv-python",
+            "pil": "pillow",
+            "plt": "matplotlib",
+            "np": "numpy",
+            "pd": "pandas",
         }
         
         # 標準的なインストール方法が失敗した場合に使うフォールバックコマンド
@@ -159,8 +187,72 @@ class PackageManagerTool(BaseTool):
             error_details = traceback.format_exc()
             return ToolResult(False, None, f"{str(e)}\n{error_details}")
     
+    def _search_pypi_package(self, package_name: str) -> str:
+        """
+        PyPIでパッケージ名を検索し、正確な名前を取得する
+        
+        Args:
+            package_name: 検索するパッケージ名
+            
+        Returns:
+            str: 正確なパッケージ名、見つからない場合は元の名前
+        """
+        if package_name in self.special_packages:
+            special_package = self.special_packages[package_name]
+            print(f"【特別パッケージ】'{package_name}'は特別なパッケージとして処理します: {special_package}")
+            return special_package
+            
+        if package_name in self.python_type_hints:
+            print(f"【型ヒント検出】'{package_name}'はPythonの型ヒントです。typingモジュールからインポートしてください。パッケージとしてインストールしません。")
+            return f"typing.{package_name}"
+            
+        try:
+            search_url = f"https://pypi.org/pypi/{package_name}/json"
+            response = requests.get(search_url, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("info", {}).get("name", package_name)
+                
+            search_url = f"https://pypi.org/search/?q={package_name}"
+            response = requests.get(search_url, timeout=5)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                package_elements = soup.select(".package-snippet__name")
+                
+                if package_elements:
+                    return package_elements[0].text.strip()
+            
+            if package_name in self.pypi_name_mapping:
+                return self.pypi_name_mapping[package_name]
+                
+            return package_name
+            
+        except Exception as e:
+            print(f"PyPI検索エラー: {str(e)}")
+            return package_name
+    
     def _handle_install(self, package: str, version: str = None, **kwargs) -> ToolResult:
         """パッケージをインストール"""
+        if package in self.special_packages:
+            special_package = self.special_packages[package]
+            print(f"【特別パッケージ】'{package}'は特別なパッケージとして処理します: {special_package}")
+            return ToolResult(True, f"'{package}' is a special package handled as: {special_package}")
+            
+        if package in self.python_type_hints:
+            print(f"【型ヒント検出】'{package}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
+            return ToolResult(True, f"'{package}' is a Python type hint from typing module. No installation needed.")
+            
+        normalized_package = self._search_pypi_package(package)
+        if normalized_package.startswith("typing."):
+            print(f"'{package}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
+            return ToolResult(True, f"'{package}' is a Python type hint from typing module. No installation needed.")
+            
+        if normalized_package != package:
+            print(f"パッケージ名を正規化: {package} -> {normalized_package}")
+            package = normalized_package
+            
         package_spec = package
         if version:
             package_spec = f"{package}=={version}"
@@ -314,14 +406,24 @@ class PackageManagerTool(BaseTool):
     def _handle_find_dependencies(self, code: str, **kwargs) -> ToolResult:
         """コード内の依存パッケージを検出"""
         try:
-            # importステートメントを検出するパターン
-            import_pattern = r'(?:from|import)\s+([\w.]+)'
-            imports = re.findall(import_pattern, code)
+            # importステートメントを検出するパターン（from typing import Dictなどを検出）
+            from_import_pattern = r'from\s+([\w.]+)\s+import\s+([\w,\s]+)'
+            import_pattern = r'import\s+([\w.]+)'
             
-            # モジュール名を正規化（サブモジュールからルートモジュールへ）
+            from_imports = re.findall(from_import_pattern, code)
+            direct_imports = re.findall(import_pattern, code)
+            
             modules = set()
-            for imp in imports:
-                # ドットで分割して最初の部分を取得（ルートモジュール）
+            imported_type_hints = set()
+            
+            for module, imports in from_imports:
+                if module == 'typing':
+                    for imp in imports.split(','):
+                        imported_type_hints.add(imp.strip())
+                else:
+                    modules.add(module.split('.')[0])
+            
+            for imp in direct_imports:
                 root_module = imp.split('.')[0]
                 modules.add(root_module)
             
@@ -331,10 +433,28 @@ class PackageManagerTool(BaseTool):
                 # 標準ライブラリのモジュールは除外
                 if self._is_stdlib_module(module):
                     continue
+                
+                if module in self.special_packages:
+                    special_package = self.special_packages[module]
+                    print(f"【特別パッケージ】'{module}'は特別なパッケージとして処理します: {special_package}")
+                    required_packages.append(special_package)
+                    continue
                     
-                # 特殊なマッピング（bs4 -> beautifulsoup4など）
-                if module == "bs4":
-                    required_packages.append("beautifulsoup4")
+                if module in self.python_type_hints or module == 'typing':
+                    print(f"【型ヒント検出】'{module}'はPythonの型ヒントです。パッケージとしてインストールしません。")
+                    continue
+                    
+                if module in imported_type_hints:
+                    print(f"【型ヒント検出】'{module}'はPythonの型ヒントです。typingモジュールから直接インポートしてください。")
+                    continue
+                    
+                normalized_module = self._search_pypi_package(module)
+                if normalized_module.startswith("typing."):
+                    continue
+                    
+                if normalized_module != module:
+                    print(f"モジュール名を正規化: {module} -> {normalized_module}")
+                    required_packages.append(normalized_module)
                 else:
                     required_packages.append(module)
             
@@ -344,12 +464,13 @@ class PackageManagerTool(BaseTool):
                 if pkg in self.common_dependencies:
                     all_dependencies.update(self.common_dependencies[pkg])
             
-            # 存在しないパッケージを除外（例: 'errors'はパッケージではない）
+            # 存在しないパッケージを除外
             filtered_dependencies = set()
             for pkg in all_dependencies:
                 # 一般的な非パッケージ名をフィルタリング
-                if pkg not in ['errors', 'error', 'exceptions', 'exception', 'warnings', 'warning']:
-                    filtered_dependencies.add(pkg)
+                if pkg not in ['errors', 'error', 'exceptions', 'exception', 'warnings', 'warning', 'data', 'typing']:
+                    if pkg not in self.python_type_hints:
+                        filtered_dependencies.add(pkg)
             
             return ToolResult(True, list(filtered_dependencies))
             
@@ -392,6 +513,18 @@ class PackageManagerTool(BaseTool):
 
     def ensure_dependencies(self, code: str) -> Tuple[bool, List[str], List[str]]:
         """コードの実行に必要な依存関係をすべてインストール"""
+        for special_pkg in self.special_packages:
+            if re.search(r'\b' + special_pkg + r'\b', code):
+                print(f"【特別パッケージ検出】コード内で'{special_pkg}'が使用されています。特別なパッケージとして処理します。")
+                
+        if 'from typing import' not in code and 'import typing' not in code:
+            for type_hint in self.python_type_hints:
+                if re.search(r'\b' + type_hint + r'\b', code):
+                    print(f"【型ヒント検出】コード内で'{type_hint}'が使用されていますが、'from typing import {type_hint}'がありません。")
+                    code = f"from typing import {type_hint}\n" + code
+                    print(f"【自動修正】'from typing import {type_hint}'をコードに追加しました。")
+                    break
+        
         # 依存関係を検出
         deps_result = self._handle_find_dependencies(code=code)
         if not deps_result.success:
@@ -406,6 +539,9 @@ class PackageManagerTool(BaseTool):
         
         # 各パッケージをインストール
         for package in required_packages:
+            if package in self.python_type_hints or package == 'typing' or package.startswith('typing.'):
+                continue
+                
             check_result = self._handle_check(package=package)
             
             if check_result.success and check_result.result.get("installed", False):

@@ -338,7 +338,25 @@ class PlanningTool(BaseTool):
             import re
             import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
             imports = re.findall(import_pattern, mock_main_code)
-            imports_text = "\n".join(imports) if imports else "# No additional imports"
+            
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            
+            processed_imports = []
+            type_hints_to_import = set()
+            
+            for imp in imports:
+                if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
+                    hint = imp.strip().replace("import ", "")
+                    type_hints_to_import.add(hint)
+                    print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+                else:
+                    processed_imports.append(imp)
+            
+            if type_hints_to_import:
+                processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
+            
+            imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
             
             # メインコードからインポート文を削除
             main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
@@ -509,7 +527,25 @@ class PlanningTool(BaseTool):
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-        imports_text = "\n".join(imports) if imports else "# No additional imports"
+        
+        python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+        
+        processed_imports = []
+        type_hints_to_import = set()
+        
+        for imp in imports:
+            if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
+                hint = imp.strip().replace("import ", "")
+                type_hints_to_import.add(hint)
+                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+            else:
+                processed_imports.append(imp)
+        
+        if type_hints_to_import:
+            processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
+        
+        imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
@@ -603,7 +639,25 @@ if __name__ == "__main__":
             import re
             import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
             imports = re.findall(import_pattern, mock_main_code)
-            imports_text = "\n".join(imports) if imports else "# No additional imports"
+            
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            
+            processed_imports = []
+            type_hints_to_import = set()
+            
+            for imp in imports:
+                if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
+                    hint = imp.strip().replace("import ", "")
+                    type_hints_to_import.add(hint)
+                    print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+                else:
+                    processed_imports.append(imp)
+            
+            if type_hints_to_import:
+                processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
+            
+            imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
             
             # メインコードからインポート文を削除
             main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
@@ -748,7 +802,25 @@ if __name__ == "__main__":
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-        imports_text = "\n".join(imports) if imports else "# No additional imports"
+        
+        python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+        
+        processed_imports = []
+        type_hints_to_import = set()
+        
+        for imp in imports:
+            if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
+                hint = imp.strip().replace("import ", "")
+                type_hints_to_import.add(hint)
+                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+            else:
+                processed_imports.append(imp)
+        
+        if type_hints_to_import:
+            processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
+        
+        imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
@@ -802,6 +874,12 @@ if __name__ == "__main__":
             if self._is_stdlib_module(module_name):
                 continue
                 
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            if module_name in python_type_hints:
+                print(f"⚠️ '{module_name}'はPythonの型ヒントです。'from typing import {module_name}'に変換します。")
+                continue
+                
             # モジュールが利用可能かチェック
             try:
                 # bs4は特殊ケース
@@ -845,16 +923,43 @@ if __name__ == "__main__":
             return False
     
     def _extract_json(self, text: str) -> str:
-        """テキストからJSONを抽出"""
+        """テキストからJSONを抽出し、必要に応じて修正"""
         # JSON配列を検索
         json_match = re.search(r'\[[\s\S]*\]', text)
         if json_match:
-            return json_match.group(0)
+            json_str = json_match.group(0)
+            try:
+                json.loads(json_str)
+                return json_str
+            except json.JSONDecodeError as e:
+                print(f"JSONの解析エラー: {str(e)}")
+                fixed_json = self._fix_json_syntax(json_str)
+                return fixed_json
         
         # JSON オブジェクトを検索
         json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
-            return json_match.group(0)
+            json_str = json_match.group(0)
+            try:
+                json.loads(json_str)
+                return json_str
+            except json.JSONDecodeError as e:
+                print(f"JSONの解析エラー: {str(e)}")
+                fixed_json = self._fix_json_syntax(json_str)
+                return fixed_json
         
         # JSONが見つからない場合は元のテキストを返す
         return text
+        
+    def _fix_json_syntax(self, json_str: str) -> str:
+        """一般的なJSON構文エラーを修正"""
+        json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+        
+        json_str = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)(\s*:)', r'\1"\2"\3', json_str)
+        
+        json_str = re.sub(r':\s*([a-zA-Z][a-zA-Z0-9_]*)\s*([,}])', r': "\1"\2', json_str)
+        
+        json_str = re.sub(r'([{,]\s*"[^"]*)\s*:\s*([^",{}\[\]]+)([,}])', r'\1": "\2"\3', json_str)
+        
+        print(f"JSONを修正しました: {json_str[:100]}...")
+        return json_str

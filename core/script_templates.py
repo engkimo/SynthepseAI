@@ -129,6 +129,41 @@ import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+def get_related_knowledge(keywords, limit=5):
+    """
+    キーワードに関連する知識を取得
+    
+    Args:
+        keywords: 検索キーワードのリスト
+        limit: 取得する最大件数
+        
+    Returns:
+        関連知識のリスト
+    """
+    try:
+        knowledge_db = load_knowledge_db()
+        related = []
+        
+        for subject, data in knowledge_db.items():
+            for keyword in keywords:
+                if keyword.lower() in subject.lower() or (
+                    data.get("fact") and keyword.lower() in data.get("fact", "").lower()
+                ):
+                    related.append({
+                        "subject": subject,
+                        "fact": data.get("fact"),
+                        "confidence": data.get("confidence", 0),
+                        "last_updated": data.get("last_updated"),
+                        "source": data.get("source")
+                    })
+                    break
+                    
+        related.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+        return related[:limit]
+    except Exception as e:
+        print(f"関連知識取得エラー: {str(e)}")
+        return []
+
 task_description = ""
 insights = []
 hypotheses = []
@@ -355,6 +390,15 @@ def request_multi_agent_discussion(topic):
             "timestamp": time.time()
         })
         
+        update_knowledge(
+            f"討論リクエスト: {topic[:50]}...",
+            f"マルチエージェント討論がリクエストされました: {topic}",
+            confidence=0.9,
+            source="multi_agent_discussion_request"
+        )
+        
+        add_insight(f"マルチエージェント討論の結果を待機中: {topic}", confidence=0.8)
+        
         return {
             "topic": topic,
             "requested": True,
@@ -378,6 +422,7 @@ def main():
         })
         
         keywords = [word for word in task_description.lower().split() if len(word) > 3]
+        
         related_knowledge = []
         try:
             knowledge_db = load_knowledge_db()
@@ -392,6 +437,27 @@ def main():
                             "source": data.get("source")
                         })
                         break
+                        
+            error_patterns = []
+            thinking_log_path = THINKING_LOG_PATH
+            if os.path.exists(thinking_log_path):
+                with open(thinking_log_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            entry = json.loads(line.strip())
+                            if entry.get("type") == "task_execution_error":
+                                content = entry.get("content", {})
+                                error_patterns.append({
+                                    "error_type": content.get("error_type", "unknown"),
+                                    "error_message": content.get("error_message", "")
+                                })
+                        except:
+                            continue
+            
+            if error_patterns:
+                add_insight(f"過去のエラーパターン {len(error_patterns)} 件を分析し、同様のエラーを回避します", confidence=0.8)
+                for pattern in error_patterns[-3:]:  # 最新の3つのエラーパターンを考慮
+                    add_hypothesis(f"エラー '{pattern['error_type']}' を回避するため、適切な対策が必要", confidence=0.7)
         except Exception as e:
             print(f"関連知識取得エラー: {str(e)}")
         
@@ -403,11 +469,19 @@ def main():
             if len(related_knowledge) >= 2:
                 hypothesis = f"タスク '{task_description}' は {related_knowledge[0]['subject']} と {related_knowledge[1]['subject']} に関連している可能性がある"
                 add_hypothesis(hypothesis, confidence=0.6)
+                
+                for i in range(min(len(related_knowledge), 3)):
+                    for j in range(i+1, min(len(related_knowledge), 4)):
+                        if i != j:
+                            insight = f"{related_knowledge[i]['subject']}と{related_knowledge[j]['subject']}を組み合わせることで、新しい視点が得られるかもしれない"
+                            add_insight(insight, confidence=0.65)
         else:
             print(f"タスク '{task_description}' に関連する既存知識は見つかりませんでした。")
             add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
             
-            request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
+            discussion_request = request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
+            if discussion_request:
+                add_insight(f"複数エージェントによる討論をリクエストしました: {task_description}", confidence=0.8)
         
 {main_code}
         
@@ -552,6 +626,13 @@ def get_template_for_task(task_description, required_libraries=None):
         # 基本テンプレートを使用（インデントに注意）
         template = """
 # 必要なライブラリのインポート
+import os
+import json
+import time
+import re
+import datetime
+import traceback
+from typing import Dict, List, Any, Optional, Union, Tuple
 {imports}
 
 def main():
@@ -560,6 +641,7 @@ def main():
 {main_code}
     except Exception as e:
         print(f"Error: {str(e)}")
+        traceback.print_exc()
         return str(e)
     
     return "Task completed successfully"

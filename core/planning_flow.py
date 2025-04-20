@@ -26,6 +26,14 @@ class PlanningFlow(BaseFlow):
         # Generate and execute the plan
         response = self.primary_agent.execute_plan(input_text)
         
+        if hasattr(self.primary_agent, 'persistent_thinking_ai'):
+            thinking_ai = getattr(self.primary_agent, 'persistent_thinking_ai', None)
+            if thinking_ai and hasattr(thinking_ai, 'integrate_task_results'):
+                try:
+                    thinking_ai.integrate_task_results(input_text, str(response))
+                except Exception as e:
+                    print(f"継続的思考プロセスへの統合エラー: {str(e)}")
+        
         # Start monitoring the execution of the plan
         self.monitor_execution()
         
