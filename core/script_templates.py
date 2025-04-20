@@ -626,6 +626,13 @@ def get_template_for_task(task_description, required_libraries=None):
         # 基本テンプレートを使用（インデントに注意）
         template = """
 # 必要なライブラリのインポート
+import os
+import json
+import time
+import re
+import datetime
+import traceback
+from typing import Dict, List, Any, Optional, Union, Tuple
 {imports}
 
 def main():
@@ -634,6 +641,7 @@ def main():
 {main_code}
     except Exception as e:
         print(f"Error: {str(e)}")
+        traceback.print_exc()
         return str(e)
     
     return "Task completed successfully"
