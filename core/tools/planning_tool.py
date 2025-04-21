@@ -322,6 +322,19 @@ class PlanningTool(BaseTool):
         # スクリプトテンプレートを取得
         template = get_template_for_task(task.description)
         
+        persistent_thinking_knowledge = ""
+        if hasattr(self.llm, 'agent') and hasattr(self.llm.agent, 'persistent_thinking_ai'):
+            try:
+                thinking_ai = self.llm.agent.persistent_thinking_ai
+                if hasattr(thinking_ai, 'get_knowledge_for_script'):
+                    knowledge = thinking_ai.get_knowledge_for_script(task.description)
+                    if knowledge:
+                        persistent_thinking_knowledge = f"""
+# {json.dumps(knowledge, ensure_ascii=False, indent=2)}
+"""
+            except Exception as e:
+                print(f"持続思考AIからの知識取得エラー: {str(e)}")
+        
         if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
             print(f"モックモード: タスク「{task.description}」用のスクリプトを生成します")
             
@@ -479,6 +492,8 @@ class PlanningTool(BaseTool):
         {knowledge_insights}
         
         {thinking_insights}
+        
+        {persistent_thinking_knowledge}
         
         Write a Python script to accomplish this task. The script should:
         1. Be self-contained and handle errors gracefully
@@ -864,6 +879,22 @@ if __name__ == "__main__":
         """コード内のインポートステートメントから不足モジュールを検出"""
         import_pattern = r'(?:from|import)\s+([\w.]+)'
         imports = re.findall(import_pattern, code)
+        
+        python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+        
+        direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
+        if re.search(direct_type_import_pattern, code):
+            print(f"Warning: Direct import of type hints detected. These should be imported from typing module.")
+            required_type_hints = []
+            for hint in python_type_hints:
+                if re.search(r'import\s+' + hint + r'\b', code):
+                    required_type_hints.append(hint)
+                    code = re.sub(r'import\s+' + hint + r'\b', '', code)
+            
+            if required_type_hints and 'from typing import' not in code:
+                type_import = f"from typing import {', '.join(required_type_hints)}"
+                code = type_import + "\n" + code
         
         missing = []
         for imp in imports:

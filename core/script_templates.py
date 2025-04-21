@@ -207,6 +207,62 @@ def log_thought(thought_type, content):
         print(f"思考ログ記録エラー: {str(e)}")
         return False
 
+def get_task_related_knowledge(task_description):
+    """
+    タスク説明からキーワードを抽出し、関連する知識を取得する
+    
+    Args:
+        task_description: タスクの説明
+        
+    Returns:
+        関連する知識の辞書
+    """
+    try:
+        keywords = task_description.lower().split()
+        keywords = [word for word in keywords if len(word) > 3]  # 短い単語を除外
+        
+        related_knowledge = get_related_knowledge(keywords)
+        
+        insights = get_task_insights(task_description)
+        
+        return {
+            "related_knowledge": related_knowledge,
+            "insights": insights
+        }
+    except Exception as e:
+        print(f"タスク関連知識取得エラー: {str(e)}")
+        return {"related_knowledge": [], "insights": []}
+
+def get_task_insights(task_description):
+    """
+    思考ログからタスクに関連する洞察を取得
+    
+    Args:
+        task_description: タスクの説明
+        
+    Returns:
+        関連する洞察のリスト
+    """
+    try:
+        insights = []
+        if os.path.exists(THINKING_LOG_PATH):
+            with open(THINKING_LOG_PATH, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        if entry.get("type") == "task_insight":
+                            if task_description.lower() in entry.get("content", {}).get("task", "").lower():
+                                insights.append({
+                                    "insight": entry.get("content", {}).get("insight", ""),
+                                    "confidence": entry.get("content", {}).get("confidence", 0)
+                                })
+                    except:
+                        continue
+        return insights
+    except Exception as e:
+        print(f"タスク洞察取得エラー: {str(e)}")
+        return []
+
 def update_knowledge(subject, fact, confidence=0.8, source=None):
     try:
         knowledge_db = load_knowledge_db()
@@ -580,6 +636,9 @@ def get_template_for_task(task_description, required_libraries=None):
     
     template = PERSISTENT_THINKING_TEMPLATE
     
+    if 'from typing import ' not in template:
+        template = 'from typing import Dict, List, Any, Optional, Union, Tuple\n' + template
+    
     task_type = "general"
     if any(keyword in task_lower for keyword in data_analysis_keywords):
         task_type = "data_analysis"
@@ -620,6 +679,9 @@ def get_template_for_task(task_description, required_libraries=None):
     
     template = template.replace('print(f"Error: {{{{str(e)}}}}")', 'print(f"Error: {str(e)}")')
     template = template.replace('print(f"エラー: {{{{str(e)}}}}")', 'print(f"エラー: {str(e)}")')
+    
+    if "{main_code}" in template:
+        pass
     
     if "{imports}" not in template or "{main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
