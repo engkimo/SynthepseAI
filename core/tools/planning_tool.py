@@ -352,44 +352,75 @@ class PlanningTool(BaseTool):
             
             mock_main_code = self.llm.generate_code(f"タスク: {task.description}")
             
-            # インポート文を抽出
+            # 型ヒントの直接インポートを修正
+            missing_modules, mock_main_code = self._check_imports(mock_main_code)
+            
+            # インポート文を抽出（型ヒントの修正後）
             import re
             import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
             imports = re.findall(import_pattern, mock_main_code)
             
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-            
-            processed_imports = []
-            type_hints_to_import = set()
-            
-            for imp in imports:
-                if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
-                    hint = imp.strip().replace("import ", "")
-                    type_hints_to_import.add(hint)
-                    print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
-                else:
-                    processed_imports.append(imp)
-            
-            if type_hints_to_import:
-                processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
-            
-            imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
-            
             # メインコードからインポート文を削除
             main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
+            
+            imports_text = "\n".join(imports) if imports else "# No additional imports"
+            
+            main_code_lines = main_code_cleaned.split('\n')
+            indented_main_code = []
+            for line in main_code_lines:
+                if line.strip():  # 空行でない場合
+                    if not line.startswith('    '):  # すでにインデントされていない場合
+                        indented_main_code.append('        ' + line)  # 8スペースのインデント（try内のコード用）
+                    else:
+                        indented_main_code.append('    ' + line)
+                else:
+                    indented_main_code.append(line)  # 空行はそのまま
+                    else:
+                        indented_main_code.append(line)
+                else:
+                    indented_main_code.append(line)  # 空行はそのまま
             
             # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
                 "imports": imports_text,
-                "main_code": main_code_cleaned,
+                "main_code": '\n'.join(indented_main_code),
             }
             
             try:
-                # 安全なフォーマット処理
-                from string import Template
-                t = Template(template)
-                full_code = task_info_code + t.safe_substitute(format_dict)
+                if "{imports}" in template and "{main_code}" in template:
+                    from string import Template
+                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
+                    t = Template(safe_template)
+                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
+                else:
+                    print("Warning: Template missing required placeholders. Using basic template.")
+                    basic_template = r'''
+import os
+import json
+import time
+import re
+import datetime
+import traceback
+from typing import Dict, List, Any, Optional, Union, Tuple
+{0}
+
+def main():
+    try:
+{1}
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        traceback.print_exc()
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+'''.format(format_dict["imports"], format_dict["main_code"])
+                    full_code = task_info_code + basic_template
+                
+                # 最終的な型ヒントの直接インポートを修正
+                missing_modules, full_code = self._check_imports(full_code)
                 return full_code
             except Exception as e:
                 print(f"Error formatting template in mock mode: {str(e)}")
@@ -584,10 +615,37 @@ class PlanningTool(BaseTool):
         }
         
         try:
-            # 安全なフォーマット処理
-            from string import Template
-            t = Template(template)
-            full_code = task_info_code + t.safe_substitute(format_dict)
+                if "{imports}" in template and "{main_code}" in template:
+                    from string import Template
+                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
+                    t = Template(safe_template)
+                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
+                else:
+                    print("Warning: Template missing required placeholders. Using basic template.")
+                    basic_template = r'''
+import os
+import json
+import time
+import re
+import datetime
+import traceback
+from typing import Dict, List, Any, Optional, Union, Tuple
+{0}
+
+def main():
+    try:
+{1}
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        traceback.print_exc()
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+'''.format(format_dict["imports"], format_dict["main_code"])
+                    full_code = task_info_code + basic_template
             
             python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                                 "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -697,44 +755,75 @@ if __name__ == "__main__":
             {modules_info}
             """)
             
-            # インポート文を抽出
+            # 型ヒントの直接インポートを修正
+            missing_modules, mock_main_code = self._check_imports(mock_main_code)
+            
+            # インポート文を抽出（型ヒントの修正後）
             import re
             import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
             imports = re.findall(import_pattern, mock_main_code)
             
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-            
-            processed_imports = []
-            type_hints_to_import = set()
-            
-            for imp in imports:
-                if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
-                    hint = imp.strip().replace("import ", "")
-                    type_hints_to_import.add(hint)
-                    print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
-                else:
-                    processed_imports.append(imp)
-            
-            if type_hints_to_import:
-                processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
-            
-            imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
-            
             # メインコードからインポート文を削除
             main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
+            
+            imports_text = "\n".join(imports) if imports else "# No additional imports"
+            
+            main_code_lines = main_code_cleaned.split('\n')
+            indented_main_code = []
+            for line in main_code_lines:
+                if line.strip():  # 空行でない場合
+                    if not line.startswith('    '):  # すでにインデントされていない場合
+                        indented_main_code.append('        ' + line)  # 8スペースのインデント（try内のコード用）
+                    else:
+                        indented_main_code.append('    ' + line)
+                else:
+                    indented_main_code.append(line)  # 空行はそのまま
+                    else:
+                        indented_main_code.append(line)
+                else:
+                    indented_main_code.append(line)  # 空行はそのまま
             
             # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
                 "imports": imports_text,
-                "main_code": main_code_cleaned,
+                "main_code": '\n'.join(indented_main_code),
             }
             
             try:
-                # 安全なフォーマット処理
-                from string import Template
-                t = Template(template)
-                full_code = task_info_code + t.safe_substitute(format_dict)
+                if "{imports}" in template and "{main_code}" in template:
+                    from string import Template
+                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
+                    t = Template(safe_template)
+                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
+                else:
+                    print("Warning: Template missing required placeholders. Using basic template.")
+                    basic_template = r'''
+import os
+import json
+import time
+import re
+import datetime
+import traceback
+from typing import Dict, List, Any, Optional, Union, Tuple
+{0}
+
+def main():
+    try:
+{1}
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        traceback.print_exc()
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+'''.format(format_dict["imports"], format_dict["main_code"])
+                    full_code = task_info_code + basic_template
+                
+                # 最終的な型ヒントの直接インポートを修正
+                missing_modules, full_code = self._check_imports(full_code)
                 return full_code
             except Exception as e:
                 print(f"Error formatting template in mock mode: {str(e)}")
@@ -894,10 +983,37 @@ if __name__ == "__main__":
         }
         
         try:
-            # 安全なフォーマット処理
-            from string import Template
-            t = Template(template)
-            full_code = task_info_code + t.safe_substitute(format_dict)
+                if "{imports}" in template and "{main_code}" in template:
+                    from string import Template
+                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
+                    t = Template(safe_template)
+                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
+                else:
+                    print("Warning: Template missing required placeholders. Using basic template.")
+                    basic_template = r'''
+import os
+import json
+import time
+import re
+import datetime
+import traceback
+from typing import Dict, List, Any, Optional, Union, Tuple
+{0}
+
+def main():
+    try:
+{1}
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        traceback.print_exc()
+        return str(e)
+    
+    return "Task completed successfully"
+
+if __name__ == "__main__":
+    result = main()
+'''.format(format_dict["imports"], format_dict["main_code"])
+                    full_code = task_info_code + basic_template
             
             python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                                 "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -972,11 +1088,21 @@ if __name__ == "__main__":
         Returns:
             Tuple[List[str], str]: 不足モジュールのリストと修正されたコード
         """
+        placeholder_replacements = {}
+        placeholder_pattern = r'(\{[a-zA-Z_][a-zA-Z0-9_]*\})'
+        
+        for i, match in enumerate(re.finditer(placeholder_pattern, code)):
+            placeholder = match.group(1)
+            replacement = f"__PLACEHOLDER_{i}__"
+            placeholder_replacements[replacement] = placeholder
+            code = code.replace(placeholder, replacement, 1)
+        
         import_pattern = r'(?:from|import)\s+([\w.]+)'
         imports = re.findall(import_pattern, code)
         
         modified_code = code
         
+        # 型ヒントの直接インポートを検出して修正
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
         
@@ -984,26 +1110,45 @@ if __name__ == "__main__":
         typing_import_match = re.search(r'from\s+typing\s+import\s+([^\n]+)', modified_code)
         if typing_import_match:
             existing_imports_str = typing_import_match.group(1)
-            existing_typing_imports = [imp.strip() for imp in existing_imports_str.split(',')]
+            existing_typing_imports = [imp.strip() for imp in existing_imports_str.split(',') if imp.strip()]
             modified_code = re.sub(r'from\s+typing\s+import\s+[^\n]+\n?', '', modified_code)
         
         direct_imports = []
         for hint in python_type_hints:
-            if re.search(r'import\s+' + hint + r'\b', modified_code):
+            direct_import_pattern = r'import\s+' + hint + r'\b'
+            if re.search(direct_import_pattern, modified_code):
                 print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
                 direct_imports.append(hint)
-                modified_code = re.sub(r'import\s+' + hint + r'\b', '', modified_code)
+                modified_code = re.sub(direct_import_pattern, '', modified_code)
         
         if direct_imports or existing_typing_imports:
             if direct_imports:
                 print(f"Warning: Direct import of type hints detected. These should be imported from typing module.")
             
-            all_type_hints = list(set(existing_typing_imports + direct_imports))
+            all_type_hints = sorted(list(set(existing_typing_imports + direct_imports)))
             
-            type_import = f"from typing import {', '.join(all_type_hints)}"
-            modified_code = type_import + "\n\n" + modified_code.lstrip()
-            
-            modified_code = re.sub(r'\n\s*\n\s*\n', '\n\n', modified_code)
+            if all_type_hints:
+                type_import = f"from typing import {', '.join(all_type_hints)}"
+                
+                import_section_end = 0
+                import_lines = re.findall(r'(?:^|\n)((?:import|from)\s+[^\n]+)', modified_code)
+                if import_lines:
+                    last_import = import_lines[-1]
+                    import_section_end = modified_code.find(last_import) + len(last_import)
+                
+                if import_section_end > 0:
+                    modified_code = modified_code[:import_section_end] + "\n" + type_import + modified_code[import_section_end:]
+                else:
+                    modified_code = type_import + "\n\n" + modified_code.lstrip()
+                
+                modified_code = re.sub(r'\n\s*\n\s*\n', '\n\n', modified_code)
+        
+        empty_typing_import = re.search(r'from\s+typing\s+import\s*\n', modified_code)
+        if empty_typing_import:
+            modified_code = re.sub(r'from\s+typing\s+import\s*\n', 'from typing import Dict, List, Any, Optional, Union, Tuple\n', modified_code)
+        
+        for replacement, placeholder in placeholder_replacements.items():
+            modified_code = modified_code.replace(replacement, placeholder)
         
         missing = []
         for imp in imports:

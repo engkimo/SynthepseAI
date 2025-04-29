@@ -11,7 +11,7 @@ DEPENDENCY_AWARE_TEMPLATE = """
 def main():
     try:
         # メイン処理
-{main_code}
+        {main_code}
         
     except ImportError as e:
         # 必要なパッケージがない場合のエラー処理
@@ -64,7 +64,7 @@ except ImportError as e:
 def main():
     try:
         # メイン処理
-{main_code}
+        {main_code}
         
     except Exception as e:
         # エラー処理
@@ -104,7 +104,7 @@ except ImportError as e:
 def main():
     try:
         # メイン処理
-{main_code}
+        {main_code}
         
     except Exception as e:
         # エラー処理
@@ -539,7 +539,7 @@ def main():
             if discussion_request:
                 add_insight(f"複数エージェントによる討論をリクエストしました: {task_description}", confidence=0.8)
         
-{main_code}
+        {main_code}
         
         log_thought("task_execution_complete", {
             "task": task_description,
@@ -608,6 +608,8 @@ def get_template_for_task(task_description, required_libraries=None):
     Returns:
         str: 適切なテンプレート
     """
+    import re
+    
     # タスクの説明を小文字に変換
     task_lower = task_description.lower()
     
@@ -675,19 +677,46 @@ def get_template_for_task(task_description, required_libraries=None):
     template = template.replace("{", "{{").replace("}", "}}")
     
     template = template.replace("{{imports}}", "{imports}")
-    template = template.replace("{{main_code}}", "{main_code}")
+    template = template.replace("{        {main_code}}", "        {main_code}")
+
+    if "        {main_code}" in template:
+        try_block_pattern = r'try\s*:\s*\n[^\n]*        {main_code}'
+        if re.search(try_block_pattern, template):
+            if "except" not in template.split("        {main_code}")[1]:
+                template = template.replace("        {main_code}", "        {main_code}\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
+        else:
+            template = template.replace("        {main_code}", "try:\n        {main_code}\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
     
     template = template.replace('print(f"Error: {{{{str(e)}}}}")', 'print(f"Error: {str(e)}")')
     template = template.replace('print(f"エラー: {{{{str(e)}}}}")', 'print(f"エラー: {str(e)}")')
     
-    if "{main_code}" in template:
+    if "        {main_code}" in template:
+        try_block_pattern = r'try\s*:\s*\n[^\n]*        {main_code}'
+        if re.search(try_block_pattern, template):
+            if "except" not in template.split("        {main_code}")[1]:
+                template = template.replace("        {main_code}", "        {main_code}\n        # 例外処理を確保\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
+    
+    empty_typing_import = re.search(r'from\s+typing\s+import\s*\n', template)
+    if empty_typing_import:
+        template = re.sub(r'from\s+typing\s+import\s*\n', 'from typing import Dict, List, Any, Optional, Union, Tuple\n', template)
+    
+    if 'from typing import ' not in template:
+        template = 'from typing import Dict, List, Any, Optional, Union, Tuple\n' + template
+    else:
+        typing_import_match = re.search(r'from\s+typing\s+import\s+([^\n]+)', template)
+        if typing_import_match and not typing_import_match.group(1).strip():
+            template = re.sub(r'from\s+typing\s+import\s+[^\n]+', 
+                             'from typing import Dict, List, Any, Optional, Union, Tuple', 
+                             template)
+    
+    if "        {main_code}" in template:
         template = template.replace("def main():", """def main():
     global get_related_knowledge, load_knowledge_db, save_knowledge_db, log_thought
     global add_insight, add_hypothesis, verify_hypothesis, add_conclusion
     global request_multi_agent_discussion, get_task_related_knowledge, get_task_insights
     global update_knowledge, verify_hypothesis_with_simulation""")
     
-    if "{imports}" not in template or "{main_code}" not in template:
+    if "{imports}" not in template or "        {main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
         # 基本テンプレートを使用（インデントに注意）
         template = """
@@ -704,7 +733,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 def main():
     try:
         # メイン処理
-{main_code}
+        {main_code}
     except Exception as e:
         print(f"Error: {str(e)}")
         traceback.print_exc()
@@ -716,5 +745,12 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
+    
+    if "{{{" in template or "}}}" in template:
+        template = template.replace("{{{", "{").replace("}}}", "}")
+    
+    empty_typing_import = re.search(r'from\s+typing\s+import\s*\n', template)
+    if empty_typing_import:
+        template = re.sub(r'from\s+typing\s+import\s*\n', 'from typing import Dict, List, Any, Optional, Union, Tuple\n', template)
     
     return template
