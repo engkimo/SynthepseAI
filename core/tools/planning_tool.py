@@ -1,5 +1,5 @@
 # core/tools/planning_tool.py
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import json
 import importlib
 import sys
@@ -130,10 +130,15 @@ class PlanningTool(BaseTool):
         self.task_db.update_task(task_id, TaskStatus.RUNNING)
         
         try:
-            # 依存関係のチェック
-            missing_imports = self._check_imports(task.code)
+            # 依存関係のチェックと型ヒントの修正
+            missing_imports, fixed_code = self._check_imports(task.code)
             if missing_imports:
                 return ToolResult(False, None, f"Missing required modules: {', '.join(missing_imports)}")
+            
+            if fixed_code != task.code:
+                print("型ヒントの修正が適用されました")
+                task.code = fixed_code
+                self.task_db.update_task(task_id, task.status, task.code)
             
             # Pythonコードを実行
             local_vars = {}
@@ -583,6 +588,30 @@ class PlanningTool(BaseTool):
             from string import Template
             t = Template(template)
             full_code = task_info_code + t.safe_substitute(format_dict)
+            
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            
+            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
+            if re.search(direct_type_import_pattern, full_code):
+                print(f"Warning: Direct import of type hints detected in full script. Fixing...")
+                required_type_hints = []
+                for hint in python_type_hints:
+                    if re.search(r'import\s+' + hint + r'\b', full_code):
+                        required_type_hints.append(hint)
+                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
+                
+                if 'from typing import' in full_code:
+                    for hint in required_type_hints:
+                        if f'from typing import {hint}' not in full_code and \
+                           not re.search(r'from typing import [^,]*,\s*' + hint + r'\b', full_code) and \
+                           not re.search(r'from typing import [^,]*,\s*[^,]*,\s*' + hint + r'\b', full_code):
+                            full_code = re.sub(r'from typing import (.+)', r'from typing import \1, ' + hint, full_code)
+                else:
+                    if required_type_hints:
+                        type_import = f"from typing import {', '.join(required_type_hints)}"
+                        full_code = type_import + "\n" + full_code
+            
             return full_code
         except Exception as e:
             print(f"Error formatting template: {str(e)}")
@@ -605,7 +634,25 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
-            return task_info_code + fallback_template.format(**format_dict)
+            full_code = task_info_code + fallback_template.format(**format_dict)
+            
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            
+            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
+            if re.search(direct_type_import_pattern, full_code):
+                print(f"Warning: Direct import of type hints detected in fallback script. Fixing...")
+                required_type_hints = []
+                for hint in python_type_hints:
+                    if re.search(r'import\s+' + hint + r'\b', full_code):
+                        required_type_hints.append(hint)
+                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
+                
+                if required_type_hints:
+                    type_import = f"from typing import {', '.join(required_type_hints)}"
+                    full_code = type_import + "\n" + full_code
+            
+            return full_code
     
     def generate_python_script_with_modules(self, task, modules: List[Dict]) -> str:
         """再利用可能なモジュールを活用してPythonスクリプトを生成"""
@@ -851,6 +898,30 @@ if __name__ == "__main__":
             from string import Template
             t = Template(template)
             full_code = task_info_code + t.safe_substitute(format_dict)
+            
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            
+            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
+            if re.search(direct_type_import_pattern, full_code):
+                print(f"Warning: Direct import of type hints detected in full script. Fixing...")
+                required_type_hints = []
+                for hint in python_type_hints:
+                    if re.search(r'import\s+' + hint + r'\b', full_code):
+                        required_type_hints.append(hint)
+                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
+                
+                if 'from typing import' in full_code:
+                    for hint in required_type_hints:
+                        if f'from typing import {hint}' not in full_code and \
+                           not re.search(r'from typing import [^,]*,\s*' + hint + r'\b', full_code) and \
+                           not re.search(r'from typing import [^,]*,\s*[^,]*,\s*' + hint + r'\b', full_code):
+                            full_code = re.sub(r'from typing import (.+)', r'from typing import \1, ' + hint, full_code)
+                else:
+                    if required_type_hints:
+                        type_import = f"from typing import {', '.join(required_type_hints)}"
+                        full_code = type_import + "\n" + full_code
+            
             return full_code
         except Exception as e:
             print(f"Error formatting template: {str(e)}")
@@ -873,28 +944,66 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
-            return task_info_code + fallback_template.format(**format_dict)
+            full_code = task_info_code + fallback_template.format(**format_dict)
+            
+            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
+                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
+            
+            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
+            if re.search(direct_type_import_pattern, full_code):
+                print(f"Warning: Direct import of type hints detected in fallback script. Fixing...")
+                required_type_hints = []
+                for hint in python_type_hints:
+                    if re.search(r'import\s+' + hint + r'\b', full_code):
+                        required_type_hints.append(hint)
+                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
+                
+                if required_type_hints:
+                    type_import = f"from typing import {', '.join(required_type_hints)}"
+                    full_code = type_import + "\n" + full_code
+            
+            return full_code
     
-    def _check_imports(self, code: str) -> List[str]:
-        """コード内のインポートステートメントから不足モジュールを検出"""
+    def _check_imports(self, code: str) -> Tuple[List[str], str]:
+        """
+        コード内のインポートステートメントから不足モジュールを検出し、
+        型ヒントの直接インポートを修正する
+        
+        Returns:
+            Tuple[List[str], str]: 不足モジュールのリストと修正されたコード
+        """
         import_pattern = r'(?:from|import)\s+([\w.]+)'
         imports = re.findall(import_pattern, code)
+        
+        modified_code = code
         
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
         
-        direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
-        if re.search(direct_type_import_pattern, code):
-            print(f"Warning: Direct import of type hints detected. These should be imported from typing module.")
-            required_type_hints = []
-            for hint in python_type_hints:
-                if re.search(r'import\s+' + hint + r'\b', code):
-                    required_type_hints.append(hint)
-                    code = re.sub(r'import\s+' + hint + r'\b', '', code)
+        existing_typing_imports = []
+        typing_import_match = re.search(r'from\s+typing\s+import\s+([^\n]+)', modified_code)
+        if typing_import_match:
+            existing_imports_str = typing_import_match.group(1)
+            existing_typing_imports = [imp.strip() for imp in existing_imports_str.split(',')]
+            modified_code = re.sub(r'from\s+typing\s+import\s+[^\n]+\n?', '', modified_code)
+        
+        direct_imports = []
+        for hint in python_type_hints:
+            if re.search(r'import\s+' + hint + r'\b', modified_code):
+                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+                direct_imports.append(hint)
+                modified_code = re.sub(r'import\s+' + hint + r'\b', '', modified_code)
+        
+        if direct_imports or existing_typing_imports:
+            if direct_imports:
+                print(f"Warning: Direct import of type hints detected. These should be imported from typing module.")
             
-            if required_type_hints and 'from typing import' not in code:
-                type_import = f"from typing import {', '.join(required_type_hints)}"
-                code = type_import + "\n" + code
+            all_type_hints = list(set(existing_typing_imports + direct_imports))
+            
+            type_import = f"from typing import {', '.join(all_type_hints)}"
+            modified_code = type_import + "\n\n" + modified_code.lstrip()
+            
+            modified_code = re.sub(r'\n\s*\n\s*\n', '\n\n', modified_code)
         
         missing = []
         for imp in imports:
@@ -925,7 +1034,7 @@ if __name__ == "__main__":
                 else:
                     missing.append(module_name)
                 
-        return missing
+        return missing, modified_code
     
     def _is_stdlib_module(self, module_name: str) -> bool:
         """モジュールが標準ライブラリの一部かどうかを判定"""

@@ -129,6 +129,14 @@ import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 
+KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
+THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
+
+task_description = ""
+insights = []
+hypotheses = []
+conclusions = []
+
 def get_related_knowledge(keywords, limit=5):
     """
     キーワードに関連する知識を取得
@@ -163,14 +171,6 @@ def get_related_knowledge(keywords, limit=5):
     except Exception as e:
         print(f"関連知識取得エラー: {str(e)}")
         return []
-
-task_description = ""
-insights = []
-hypotheses = []
-conclusions = []
-
-KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
-THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
 
 def load_knowledge_db():
     try:
@@ -681,7 +681,11 @@ def get_template_for_task(task_description, required_libraries=None):
     template = template.replace('print(f"エラー: {{{{str(e)}}}}")', 'print(f"エラー: {str(e)}")')
     
     if "{main_code}" in template:
-        pass
+        template = template.replace("def main():", """def main():
+    global get_related_knowledge, load_knowledge_db, save_knowledge_db, log_thought
+    global add_insight, add_hypothesis, verify_hypothesis, add_conclusion
+    global request_multi_agent_discussion, get_task_related_knowledge, get_task_insights
+    global update_knowledge, verify_hypothesis_with_simulation""")
     
     if "{imports}" not in template or "{main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
