@@ -1,361 +1,289 @@
-# core/tools/planning_tool.py
-from typing import Dict, List, Any, Optional, Tuple
-import json
-import importlib
-import sys
 import os
+import json
 import re
-from .base_tool import BaseTool, ToolResult
-from ..task_database import TaskDatabase, TaskStatus
-from ..script_templates import get_template_for_task
+import time
+import traceback
+from typing import List, Dict, Any, Optional, Union, Tuple
+
+from core.script_templates import get_template_for_task
+from core.tools.base_tool import BaseTool, ToolResult
 
 class PlanningTool(BaseTool):
-    def __init__(self, llm, task_db: TaskDatabase, graph_rag=None, modular_code_manager=None):
-        super().__init__(
-            name="planning",
-            description="A tool for planning and managing the execution of complex tasks"
-        )
+    """タスクの計画と実行を管理するツール"""
+    
+    def __init__(self, llm=None, task_db=None, python_execute_tool=None):
+        """初期化"""
         self.llm = llm
         self.task_db = task_db
-        self.plans = {}
-        self._current_plan_id = None
-        self.graph_rag = graph_rag  # GraphRAGマネージャー
-        self.modular_code_manager = modular_code_manager  # モジュラーコードマネージャー
-        
-        self.parameters = {
-            "command": {
-                "type": "string",
-                "enum": ["generate_plan", "generate_code", "execute_task", "get_task_status", "get_plan_status"]
-            },
-            "goal": {"type": "string"},
-            "task_id": {"type": "string"},
-            "plan_id": {"type": "string"},
-            "template_info": {"type": "object"},  # 学習ベースのテンプレート情報
-            "modules": {"type": "array"}  # 再利用可能なモジュール情報
-        }
+        self.python_execute_tool = python_execute_tool
     
-    def execute(self, command: str, **kwargs) -> ToolResult:
-        """プランニングツールを実行"""
-        command_handlers = {
-            "generate_plan": self._handle_generate_plan,
-            "generate_code": self._handle_generate_code,
-            "execute_task": self._handle_execute_task,
-            "get_task_status": self._handle_get_task_status,
-            "get_plan_status": self._handle_get_plan_status
-        }
-        
-        handler = command_handlers.get(command)
-        if not handler:
-            return ToolResult(False, None, f"Unknown command: {command}")
-        
-        try:
-            return handler(**kwargs)
-
-        
-        except Exception as e:
-
-        
-            print(f"Error: {str(e)}")
-
-        
-            return None
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            return ToolResult(False, None, f"{str(e)}\n{error_details}")
+    def execute(self, action, params=None):
+        """アクションを実行"""
+        if action == "generate_plan":
+            return self._handle_generate_plan(params)
+        elif action == "generate_code":
+            return self._handle_generate_code(params)
+        elif action == "execute_task":
+            return self._handle_execute_task(params)
+        elif action == "get_task_status":
+            return self._handle_get_task_status(params)
+        elif action == "get_plan_status":
+            return self._handle_get_plan_status(params)
+        else:
+            return ToolResult(
+                success=False,
+                message=f"Unknown action: {action}",
+                data=None
+            )
     
-    def _handle_generate_plan(self, goal: str, template_info: Dict = None, **kwargs) -> ToolResult:
-        """目標からプランを生成"""
-        # プランをデータベースに作成
-        plan_id = self.task_db.add_plan(goal)
-        self._current_plan_id = plan_id
-        
-        # 学習ベースのテンプレート情報を活用
-        template_prompt = ""
-        if template_info:
-            template_prompt = f"""
-            Based on similar tasks, the most effective approach has these characteristics:
-            - Task type: {template_info.get("task_type", "general")}
-            - Key considerations: {', '.join(template_info.get("keywords", [])[:5])}
-            
-            Consider these insights when creating your plan.
-            """
-        
-        # タスクを生成
-        tasks = self.generate_plan(goal, template_prompt)
-        
-        # タスクをデータベースに追加
-        for i, task in enumerate(tasks):
-            # 依存関係を処理（インデックスをIDに変換）
-            dependencies = []
-            for dep_idx in task.get("dependencies", []):
-                if isinstance(dep_idx, int) and 0 <= dep_idx < i:
-                    # タスクのID順が生成順と同じと仮定
-                    dep_task_ids = list(self.task_db.get_tasks_by_plan(plan_id))
-                    if dep_idx < len(dep_task_ids):
-                        dependencies.append(dep_task_ids[dep_idx].id)
-            
-            self.task_db.add_task(
-                description=task["description"],
-                plan_id=plan_id,
-                dependencies=dependencies
+    def _handle_generate_plan(self, params):
+        """プラン生成アクションを処理"""
+        if not params or "goal" not in params:
+            return ToolResult(
+                success=False,
+                message="Missing required parameter: goal",
+                data=None
             )
         
-        return ToolResult(True, plan_id)
+        goal = params["goal"]
+        try:
+            plan = self.generate_plan(goal)
+            return ToolResult(
+                success=True,
+                message=f"Plan generated for goal: {goal}",
+                data={"plan_id": plan.id, "tasks": [t.to_dict() for t in plan.tasks]}
+            )
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                message=f"Failed to generate plan: {str(e)}",
+                data=None
+            )
     
-    def _handle_generate_code(self, task_id: str, modules: List[Dict] = None, **kwargs) -> ToolResult:
-        """タスク用のPythonコードを生成"""
+    def _handle_generate_code(self, params):
+        """コード生成アクションを処理"""
+        if not params or "task_id" not in params:
+            return ToolResult(
+                success=False,
+                message="Missing required parameter: task_id",
+                data=None
+            )
+        
+        task_id = params["task_id"]
         task = self.task_db.get_task(task_id)
+        
         if not task:
-            return ToolResult(False, None, f"Task with ID {task_id} not found")
+            return ToolResult(
+                success=False,
+                message=f"Task not found: {task_id}",
+                data=None
+            )
         
         try:
-            # モジュール情報を考慮してコード生成
-            if modules:
-                code = self.generate_python_script_with_modules(task, modules)
+            code = self.generate_python_script(task)
+            return ToolResult(
+                success=True,
+                message=f"Code generated for task: {task_id}",
+                data={"code": code}
+            )
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                message=f"Failed to generate code: {str(e)}",
+                data=None
+            )
+    
+    def _handle_execute_task(self, params):
+        """タスク実行アクションを処理"""
+        if not params or "task_id" not in params:
+            return ToolResult(
+                success=False,
+                message="Missing required parameter: task_id",
+                data=None
+            )
+        
+        task_id = params["task_id"]
+        task = self.task_db.get_task(task_id)
+        
+        if not task:
+            return ToolResult(
+                success=False,
+                message=f"Task not found: {task_id}",
+                data=None
+            )
+        
+        if not self.python_execute_tool:
+            return ToolResult(
+                success=False,
+                message="Python execute tool not available",
+                data=None
+            )
+        
+        try:
+            code = self.generate_python_script(task)
+            
+            result = self.python_execute_tool.execute("run_python", {
+                "code": code,
+                "task_id": task_id,
+                "plan_id": task.plan_id
+            })
+            
+            if result.success:
+                task.status = "completed"
+                task.result = result.data.get("result", "Task completed")
             else:
-                code = self.generate_python_script(task)
+                task.status = "failed"
+                task.result = result.data.get("error", "Task failed")
             
-            # タスクのコードを更新
-            self.task_db.update_task_code(task_id, code)
+            self.task_db.update_task(task)
             
-            return ToolResult(True, code)
-
-        
+            return result
         except Exception as e:
-
-        
-            print(f"Error: {str(e)}")
-
-        
-            return None
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"Code generation error: {str(e)}\n{error_details}")
-            return ToolResult(False, None, f"Failed to generate code: {str(e)}")
+            task.status = "failed"
+            task.result = f"Error: {str(e)}"
+            self.task_db.update_task(task)
+            
+            return ToolResult(
+                success=False,
+                message=f"Failed to execute task: {str(e)}",
+                data={"error": str(e)}
+            )
     
-    def _handle_execute_task(self, task_id: str, **kwargs) -> ToolResult:
-        """タスクを実行"""
+    def _handle_get_task_status(self, params):
+        """タスクステータス取得アクションを処理"""
+        if not params or "task_id" not in params:
+            return ToolResult(
+                success=False,
+                message="Missing required parameter: task_id",
+                data=None
+            )
+        
+        task_id = params["task_id"]
         task = self.task_db.get_task(task_id)
+        
         if not task:
-            return ToolResult(False, None, f"Task with ID {task_id} not found")
+            return ToolResult(
+                success=False,
+                message=f"Task not found: {task_id}",
+                data=None
+            )
         
-        if not task.code:
-            return ToolResult(False, None, f"Task {task_id} has no code to execute")
-        
-        # タスクのステータスを更新
-        self.task_db.update_task(task_id, TaskStatus.RUNNING)
-        
-        try:
-            # 依存関係のチェックと型ヒントの修正
-            missing_imports, fixed_code = self._check_imports(task.code)
-            if missing_imports:
-                return ToolResult(False, None, f"Missing required modules: {', '.join(missing_imports)}")
-            
-            if fixed_code != task.code:
-                print("型ヒントの修正が適用されました")
-                task.code = fixed_code
-                self.task_db.update_task(task_id, task.status, task.code)
-            
-            # Pythonコードを実行
-            local_vars = {}
-            
-            # 実行環境情報
-            execution_env = {
-                "task_id": task.id,
-                "task_description": task.description,
-                "plan_id": task.plan_id,
-            }
-            
-            # 実行環境の設定
-            global_vars = {
-                "__builtins__": __builtins__,
-                "task_info": execution_env
-            }
-            
-            # コードを安全に実行
-            exec(task.code, global_vars, local_vars)
-            
-            # 実行結果を取得
-            result = local_vars.get("result", "Task executed successfully but no result variable found")
-            
-            return ToolResult(True, result)
-
-        
-        except Exception as e:
-
-        
-            print(f"Error: {str(e)}")
-
-        
-            return None
-        except ModuleNotFoundError as e:
-            # モジュールが見つからないエラー
-            module_name = str(e).split("'")[1] if "'" in str(e) else str(e)
-            return ToolResult(False, None, f"No module named '{module_name}'")
-        except ImportError as e:
-            # インポートエラー
-            return ToolResult(False, None, f"Import error: {str(e)}")
-        except Exception as e:
-            # その他のエラー
-            import traceback
-            tb = traceback.format_exc()
-            return ToolResult(False, None, f"{str(e)}\n{tb}")
+        return ToolResult(
+            success=True,
+            message=f"Task status: {task.status}",
+            data=task.to_dict()
+        )
     
-    def _handle_get_task_status(self, task_id: str, **kwargs) -> ToolResult:
-        """タスクのステータスを取得"""
-        task = self.task_db.get_task(task_id)
-        if not task:
-            return ToolResult(False, None, f"Task with ID {task_id} not found")
+    def _handle_get_plan_status(self, params):
+        """プランステータス取得アクションを処理"""
+        if not params or "plan_id" not in params:
+            return ToolResult(
+                success=False,
+                message="Missing required parameter: plan_id",
+                data=None
+            )
         
-        return ToolResult(True, {
-            "id": task.id,
-            "description": task.description,
-            "status": task.status.value,
-            "result": task.result
-        })
-    
-    def _handle_get_plan_status(self, plan_id: str, **kwargs) -> ToolResult:
-        """プランのステータスを取得"""
+        plan_id = params["plan_id"]
         plan = self.task_db.get_plan(plan_id)
+        
         if not plan:
-            return ToolResult(False, None, f"Plan with ID {plan_id} not found")
+            return ToolResult(
+                success=False,
+                message=f"Plan not found: {plan_id}",
+                data=None
+            )
         
-        tasks = self.task_db.get_tasks_by_plan(plan_id)
+        tasks = self.task_db.get_tasks_for_plan(plan_id)
         
-        completed = sum(1 for task in tasks if task.status == TaskStatus.COMPLETED)
-        failed = sum(1 for task in tasks if task.status == TaskStatus.FAILED)
-        pending = sum(1 for task in tasks if task.status == TaskStatus.PENDING)
-        running = sum(1 for task in tasks if task.status == TaskStatus.RUNNING)
-        
-        return ToolResult(True, {
-            "id": plan.id,
-            "goal": plan.goal,
-            "total_tasks": len(tasks),
-            "completed": completed,
-            "failed": failed,
-            "pending": pending,
-            "running": running,
-            "progress": completed / len(tasks) if tasks else 0
-        })
+        return ToolResult(
+            success=True,
+            message=f"Plan status retrieved",
+            data={
+                "plan": plan.to_dict(),
+                "tasks": [t.to_dict() for t in tasks]
+            }
+        )
     
-    def generate_plan(self, goal: str, template_prompt: str = "") -> List[Dict]:
-        """目標からタスクリストを生成"""
-        # 過去の学習情報を活用したプランニング
-        learning_insights = ""
-        if self.graph_rag:
+    def generate_plan(self, goal):
+        """目標に基づいてプランを生成"""
+        thinking_insights = ""
+        if hasattr(self.llm, 'agent') and hasattr(self.llm.agent, 'persistent_thinking_ai'):
             try:
-                # 類似のタスクテンプレートを検索
-                similar_templates = self.graph_rag.find_similar_task_templates(goal, limit=2)
-                if similar_templates:
-                    top_template = similar_templates[0]
-                    learning_insights = f"""
-                    Based on our experience with similar tasks, consider these insights:
-                    - Task type: {top_template["task_type"]}
-                    - Key considerations: {', '.join(top_template.get("keywords", [])[:5])}
-                    - Success rate: {top_template["success_count"]} successful completions
-                    
-                    Also, be aware of these common issues:
-                    """
-                    
-                    # 関連するエラーパターンを検索
-                    error_patterns = self.graph_rag.find_similar_error_patterns(goal, limit=3)
-                    if error_patterns:
-                        for pattern in error_patterns:
-                            error_type = pattern.get("error_type", "unknown")
-                            learning_insights += f"- Watch out for {error_type} errors\n"
-
+                thinking_ai = self.llm.agent.persistent_thinking_ai
+                recent_thoughts = thinking_ai.get_recent_thoughts(limit=5)
+                
+                if recent_thoughts:
+                    thinking_insights = "Recent insights from persistent thinking:\n"
+                    for thought in recent_thoughts:
+                        thought_type = thought.get("type", "")
+                        content = thought.get("content", {})
+                        
+                        if thought_type == "reflection":
+                            thinking_insights += f"- Reflection: {content.get('thought', '')}\n"
+                        elif thought_type == "knowledge_update":
+                            thinking_insights += f"- Knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
+                        elif thought_type == "web_knowledge_update":
+                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
             except Exception as e:
+                print(f"Error getting thinking insights: {str(e)}")
 
-                print(f"Error: {str(e)}")
-
-                return None
-            except Exception as e:
-                print(f"Error getting learning insights: {str(e)}")
-        
         prompt = f"""
-        Goal: {goal}
+        Overall Goal: {goal}
         
-        {template_prompt}
+        {thinking_insights}
         
-        {learning_insights}
+        Create a plan to achieve this goal. Break it down into smaller, manageable tasks.
+        For each task, provide:
+        1. A clear description of what needs to be done
+        2. Any dependencies on other tasks
         
-        Break down this goal into a list of sequential tasks that can be accomplished with Python code. 
-        For each task:
-        1. Provide a clear description
-        2. Identify any dependencies (tasks that must be completed first)
-        3. Consider necessary libraries and external dependencies
-        
-        Return the tasks as a JSON array of objects with the following structure:
+        Format your response as a JSON object with the following structure:
         {{
-            "description": "Task description",
-            "dependencies": [], // List of previous task indices (0-based) that must be completed first
-            "required_libraries": [] // List of Python libraries that might be needed
+            "tasks": [
+                {{
+                    "description": "Task description",
+                    "dependencies": []  // List of task indices that this task depends on
+                }},
+                // More tasks...
+            ]
         }}
         
-        The tasks should be ordered logically, with earlier tasks coming before later dependent tasks.
-        Include a first task to import all necessary libraries, and make sure to handle edge cases and errors.
-        Aim for tasks that are atomic and focused on a single objective.
+        Make sure your plan is comprehensive and covers all aspects of the goal.
         """
         
-        response = self.llm.generate_text(prompt)
-        
-        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
-            print("モックモード: デフォルトのタスク計画を生成します")
-            return [
-                {
-                    "description": "必要なライブラリをインポートする",
-                    "dependencies": [],
-                    "required_libraries": ["os", "json", "datetime"]
-                },
-                {
-                    "description": f"目標「{goal}」の初期分析を行う",
-                    "dependencies": ["task_1"],
-                    "required_libraries": []
-                },
-                {
-                    "description": "結果をまとめる",
-                    "dependencies": ["task_2"],
-                    "required_libraries": []
-                }
-            ]
-        
         try:
-            # JSONを抽出
-            tasks_json = self._extract_json(response)
-            tasks = json.loads(tasks_json)
+            plan_json = self.llm.generate_text(prompt)
+            plan_json = _fix_json_syntax(plan_json)
             
-            # タスクのフォーマット検証
-            for task in tasks:
-                if "description" not in task:
-                    raise ValueError("Task missing 'description' field")
-                if "dependencies" not in task:
-                    task["dependencies"] = []
-                # 必要なライブラリがない場合は空リストを追加
-                if "required_libraries" not in task:
-                    task["required_libraries"] = []
+            plan_data = json.loads(plan_json)
             
-            return tasks
-
-        
-        except Exception as e:
-
-        
-            print(f"Error: {str(e)}")
-
-        
-            return None
+            plan = self.task_db.create_plan(goal)
+            
+            tasks = []
+            for i, task_data in enumerate(plan_data.get("tasks", [])):
+                description = task_data.get("description", f"Task {i+1}")
+                dependencies = []
+                
+                for dep_idx in task_data.get("dependencies", []):
+                    if dep_idx < i and dep_idx >= 0:
+                        dependencies.append(tasks[dep_idx].id)
+                
+                task = self.task_db.create_task(
+                    description=description,
+                    plan_id=plan.id,
+                    dependencies=dependencies
+                )
+                tasks.append(task)
+            
+            return plan
         except Exception as e:
             raise ValueError(f"Failed to parse plan: {str(e)}")
     
     def generate_python_script(self, task) -> str:
         """タスク用のPythonスクリプトを生成"""
-        # プランの目標を取得
         plan = self.task_db.get_plan(task.plan_id)
         goal = plan.goal if plan else "Accomplish the task"
         
-        # 依存タスクの情報を取得
         dependent_tasks = []
         for dep_id in task.dependencies:
             dep_task = self.task_db.get_task(dep_id)
@@ -366,7 +294,6 @@ class PlanningTool(BaseTool):
                     "result": dep_task.result
                 })
         
-        # スクリプトテンプレートを取得
         template = get_template_for_task(task.description)
         
         persistent_thinking_knowledge = ""
@@ -377,14 +304,7 @@ class PlanningTool(BaseTool):
                     knowledge = thinking_ai.get_knowledge_for_script(task.description)
                     if knowledge:
                         persistent_thinking_knowledge = f"""
-# {json.dumps(knowledge, ensure_ascii=False, indent=2)}
 """
-
-            except Exception as e:
-
-                print(f"Error: {str(e)}")
-
-                return None
             except Exception as e:
                 print(f"持続思考AIからの知識取得エラー: {str(e)}")
         
@@ -400,15 +320,12 @@ class PlanningTool(BaseTool):
             
             mock_main_code = self.llm.generate_code(f"タスク: {task.description}")
             
-            # 型ヒントの直接インポートを修正
             missing_modules, mock_main_code = self._check_imports(mock_main_code)
             
-            # インポート文を抽出（型ヒントの修正後）
             import re
             import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
             imports = re.findall(import_pattern, mock_main_code)
             
-            # メインコードからインポート文を削除
             main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
             
             imports_text = "\n".join(imports) if imports else "# No additional imports"
@@ -424,7 +341,6 @@ class PlanningTool(BaseTool):
                 else:
                     indented_main_code.append(line)  # 空行はそのまま
             
-            # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
                 "imports": imports_text,
                 "main_code": '\n'.join(indented_main_code),
@@ -448,24 +364,10 @@ import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 {0}
 
-            
-            except Exception as e:
-
-            
-                print(f"Error: {str(e)}")
-
-            
-                return None
-
 def main():
     try:
 {1}
 
-    except Exception as e:
-
-        print(f"Error: {str(e)}")
-
-        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         traceback.print_exc()
@@ -478,192 +380,65 @@ if __name__ == "__main__":
 '''.format(format_dict["imports"], format_dict["main_code"])
                     full_code = task_info_code + basic_template
                 
-                # 最終的な型ヒントの直接インポートを修正
                 missing_modules, full_code = self._check_imports(full_code)
                 return full_code
             except Exception as e:
-                print(f"Error formatting template in mock mode: {str(e)}")
+                print(f"Error formatting template: {str(e)}")
                 return task_info_code + mock_main_code
         
-        # 学習ベースの強化
-        learning_insights = ""
-        if self.graph_rag:
-            try:
-                # 類似のエラーパターンを検索
-                similar_errors = self.graph_rag.find_similar_error_patterns(task.description, limit=3)
-                if similar_errors:
-                    learning_insights += "Based on our analysis of similar tasks, watch out for these common issues:\n"
-                    for error in similar_errors:
-                        error_type = error.get("error_type", "unknown")
-                        learning_insights += f"- {error_type} errors can occur in this kind of task\n"
-
-            except Exception as e:
-
-                print(f"Error: {str(e)}")
-
-                return None
-            except Exception as e:
-                print(f"Error getting error patterns: {str(e)}")
-        
-        # GraphRAGとModularCodeManagerが利用可能な場合、関連情報を追加
-        if self.graph_rag and self.modular_code_manager:
-            # 再利用可能なモジュールを取得
-            modules = self.modular_code_manager.get_modules_for_task(task.description)
-            
-            if modules:
-                modules_info = "\n\n".join([
-                    f"Module: {module['name']}\nDescription: {module['description']}\n```python\n{module['code']}\n```"
-                    for module in modules[:2]  # 上位2つのみを使用
-                ])
-                
-                learning_insights += f"""
-                
-                Consider using these reusable modules:
-                {modules_info}
-                
-                Import and use these modules when appropriate instead of duplicating functionality.
-                """
-        
-        knowledge_insights = ""
-        try:
-            import re
-            knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
-            if os.path.exists(knowledge_db_path):
-                with open(knowledge_db_path, 'r', encoding='utf-8') as f:
-                    knowledge_db = json.load(f)
-                
-                keywords = re.findall(r'\b\w{4,}\b', task.description.lower())
-                
-                related_knowledge = []
-                for subject, data in knowledge_db.items():
-                    for keyword in keywords:
-                        if keyword in subject.lower() or (data.get("fact") and keyword in data.get("fact", "").lower()):
-                            related_knowledge.append({
-                                "subject": subject,
-                                "fact": data.get("fact"),
-                                "confidence": data.get("confidence", 0)
-                            })
-                            break
-                
-                if related_knowledge:
-                    knowledge_insights += "\nRelevant knowledge from previous tasks:\n"
-                    for k in related_knowledge[:3]:
-                        knowledge_insights += f"- {k['subject']}: {k['fact']} (confidence: {k['confidence']})\n"
-
-        except Exception as e:
-
-            print(f"Error: {str(e)}")
-
-            return None
-        except Exception as e:
-            print(f"Error getting knowledge insights: {str(e)}")
-        
         thinking_insights = ""
-        try:
-            thinking_log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
-            if os.path.exists(thinking_log_path):
-                recent_thoughts = []
-                with open(thinking_log_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        try:
-                            thought = json.loads(line.strip())
-                            if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
-                                recent_thoughts.append(thought)
-
-        except Exception as e:
-
-            print(f"Error: {str(e)}")
-
-            return None
-                        except:
-                            pass
+        if hasattr(self.llm, 'agent') and hasattr(self.llm.agent, 'persistent_thinking_ai'):
+            try:
+                thinking_ai = self.llm.agent.persistent_thinking_ai
+                recent_thoughts = thinking_ai.get_recent_thoughts(limit=5)
                 
                 if recent_thoughts:
-                    thinking_insights += "\nRecent thinking insights:\n"
-                    for thought in recent_thoughts[-3:]:
+                    thinking_insights = "Recent insights from persistent thinking:\n"
+                    for thought in recent_thoughts:
                         thought_type = thought.get("type", "")
                         content = thought.get("content", {})
-                        if thought_type == "continuous_thinking":
-                            thinking_insights += f"- Thought: {content.get('thought', '')}\n"
-                        elif thought_type == "knowledge_reflection":
-                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')}\n"
+                        
+                        if thought_type == "reflection":
+                            thinking_insights += f"- Reflection: {content.get('thought', '')}\n"
+                        elif thought_type == "knowledge_update":
+                            thinking_insights += f"- Knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
                         elif thought_type == "web_knowledge_update":
                             thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
-        except Exception as e:
-            print(f"Error getting thinking insights: {str(e)}")
-
+            except Exception as e:
+                print(f"Error getting thinking insights: {str(e)}")
+        
+        dependencies_info = ""
+        if dependent_tasks:
+            dependencies_info = "Dependencies:\n"
+            for i, dep in enumerate(dependent_tasks):
+                dependencies_info += f"{i+1}. {dep['description']} - Status: {dep['status']}\n"
+                if dep['result']:
+                    dependencies_info += f"   Result: {dep['result']}\n"
+        
         prompt = f"""
         Overall Goal: {goal}
         
-        Task Description: {task.description}
+        Task: {task.description}
         
-        Dependent Tasks:
-        {json.dumps(dependent_tasks, indent=2)}
-        
-        {learning_insights}
-        
-        {knowledge_insights}
+        {dependencies_info}
         
         {thinking_insights}
         
         {persistent_thinking_knowledge}
         
         Write a Python script to accomplish this task. The script should:
-        1. Be self-contained and handle errors gracefully
-        2. Store the final result in a variable called 'result'
-        3. Include appropriate error handling
-        4. Check if required modules are available and provide helpful error messages
-        5. Use the knowledge database and thinking log functions provided in the template
-        6. Actively contribute to the continuous learning system by:
-           - Logging important thoughts and decisions
-           - Updating the knowledge database with new insights
-           - Retrieving and building upon existing knowledge
-           - Testing hypotheses and recording results
+        1. Be well-structured and follow best practices
+        2. Include appropriate error handling
+        3. Return a result that can be used by dependent tasks
         
-        IMPORTANT: 
-        - Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
-        - Your script will have access to these helper functions:
-          * load_knowledge_db() - Loads the knowledge database
-          * save_knowledge_db(knowledge_db) - Saves the knowledge database
-          * log_thought(thought_type, content) - Logs a thought to the thinking log
-          * update_knowledge(subject, fact, confidence) - Updates knowledge in the database
-          * get_knowledge(subject) - Gets knowledge about a specific subject
-          * get_related_knowledge(keywords, limit) - Gets knowledge related to keywords
-        
-        Follow these best practices:
-        - Include all necessary imports at the top
-        - Handle potential missing dependencies with try/except blocks
-        - Use proper error messages to indicate missing packages
-        - For file operations, use 'with' statements and handle file not found errors
-        - Use the knowledge database to store any valuable insights discovered during task execution
-        - Log important thoughts and decisions to the thinking log
-        - Be sure main code starts at the left margin (column 0) with no leading whitespace
-        - Implement a research-oriented approach:
-          * Formulate hypotheses based on existing knowledge
-          * Test hypotheses through data analysis or information gathering
-          * Record results and update knowledge accordingly
-          * Consider alternative explanations and approaches
-        
-        Only provide the code that would replace the `{{main_code}}` part in the template.
-        Do not include the template structure or import statements, as they will be added automatically.
+        Your code should be complete and ready to execute.
         """
         
-        # メインコード部分を生成
         main_code = self.llm.generate_code(prompt)
         
-        # インポート文を抽出
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-                # 最終的な型ヒントの直接インポートを修正
-                missing_modules, full_code = self._check_imports(full_code)
-                return full_code
-            except Exception as e:
-                print(f"Error formatting template: {str(e)}")
-                return task_info_code + mock_main_code
-
-        # 型ヒントの直接インポートを検出して修正
-        
         
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -684,7 +459,6 @@ if __name__ == "__main__":
         
         imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
         
-        # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
         
         task_info_code = f"""task_info = {{
@@ -694,451 +468,20 @@ if __name__ == "__main__":
 }}
 """
         
-        # 安全なテンプレート置換のためのディクショナリを作成
         format_dict = {
             "imports": imports_text,
             "main_code": main_code_cleaned,
         }
         
         try:
-                if "{imports}" in template and "{main_code}" in template:
-                    from string import Template
-                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
-                    t = Template(safe_template)
-                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
-                else:
-                    print("Warning: Template missing required placeholders. Using basic template.")
-                    basic_template = r'''
-import os
-import json
-import time
-import re
-import datetime
-import traceback
-from typing import Dict, List, Any, Optional, Union, Tuple
-{0}
-
-        
-        except Exception as e:
-
-        
-            print(f"Error: {str(e)}")
-
-        
-            return None
-
-def main():
-    try:
-{1}
-
-    except Exception as e:
-
-        print(f"Error: {str(e)}")
-
-        return None
-    except Exception as e:
-        print(f"Error: {{str(e)}}")
-        traceback.print_exc()
-        return str(e)
-    
-    return "Task completed successfully"
-
-if __name__ == "__main__":
-    result = main()
-'''.format(format_dict["imports"], format_dict["main_code"])
-                    full_code = task_info_code + basic_template
-                # 最終的な型ヒントの直接インポートを修正
-                missing_modules, full_code = self._check_imports(full_code)
-                return full_code
-            except Exception as e:
-                print(f"Error formatting template: {str(e)}")
-                return task_info_code + mock_main_code
-
-        # 型ヒントの直接インポートを検出して修正
-        
-            
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-            
-            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
-            if re.search(direct_type_import_pattern, full_code):
-                print(f"Warning: Direct import of type hints detected in full script. Fixing...")
-                required_type_hints = []
-                for hint in python_type_hints:
-                    if re.search(r'import\s+' + hint + r'\b', full_code):
-                        required_type_hints.append(hint)
-                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
-                
-                if 'from typing import' in full_code:
-                    for hint in required_type_hints:
-                        if f'from typing import {hint}' not in full_code and \
-                           not re.search(r'from typing import [^,]*,\s*' + hint + r'\b', full_code) and \
-                           not re.search(r'from typing import [^,]*,\s*[^,]*,\s*' + hint + r'\b', full_code):
-                            full_code = re.sub(r'from typing import (.+)', r'from typing import \1, ' + hint, full_code)
-                else:
-                    if required_type_hints:
-                        type_import = f"from typing import {', '.join(required_type_hints)}"
-                        full_code = type_import + "\n" + full_code
-            
-            return full_code
-        except Exception as e:
-            print(f"Error formatting template: {str(e)}")
-            # フォールバック: 基本的なテンプレートを使用
-            fallback_template = """
-# 必要なライブラリのインポート
-{imports}
-
-def main():
-    try:
-        # メイン処理
-        {main_code}
-
-    except Exception as e:
-
-        print(f"Error: {str(e)}")
-
-        return None
-    except Exception as e:
-        print(f"Error: {{str(e)}}")
-        return str(e)
-    
-    return "Task completed successfully"
-
-# スクリプト実行
-if __name__ == "__main__":
-    result = main()
-"""
-            full_code = task_info_code + fallback_template.format(**format_dict)
-            
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-            
-            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
-            if re.search(direct_type_import_pattern, full_code):
-                print(f"Warning: Direct import of type hints detected in fallback script. Fixing...")
-                required_type_hints = []
-                for hint in python_type_hints:
-                    if re.search(r'import\s+' + hint + r'\b', full_code):
-                        required_type_hints.append(hint)
-                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
-                
-                if required_type_hints:
-                    type_import = f"from typing import {', '.join(required_type_hints)}"
-                    full_code = type_import + "\n" + full_code
-            
-            return full_code
-    
-    def generate_python_script_with_modules(self, task, modules: List[Dict]) -> str:
-        """再利用可能なモジュールを活用してPythonスクリプトを生成"""
-        # プランの目標を取得
-        plan = self.task_db.get_plan(task.plan_id)
-        goal = plan.goal if plan else "Accomplish the task"
-        
-        # 依存タスクの情報を取得
-        dependent_tasks = []
-        for dep_id in task.dependencies:
-            dep_task = self.task_db.get_task(dep_id)
-            if dep_task:
-                dependent_tasks.append({
-                    "description": dep_task.description,
-                    "status": dep_task.status.value,
-                    "result": dep_task.result
-                })
-        
-        # スクリプトテンプレートを取得
-        template = get_template_for_task(task.description)
-        
-        task_info_code = f"""task_info = {{
-    "task_id": "{task.id}",
-    "description": "{task.description}",
-    "plan_id": "{task.plan_id}",
-}}
-"""
-        
-        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
-            print(f"モックモード: モジュール付きタスク「{task.description}」用のスクリプトを生成します")
-            
-            # モジュール情報をプロンプトに整形
-            modules_info = "\n\n".join([
-                f"Module: {module['name']}\nDescription: {module['description']}\n```python\n{module['code']}\n```"
-                for module in modules[:3]  # 最大3つのモジュールを使用
-            ])
-            
-            mock_main_code = self.llm.generate_code(f"""
-            タスク: {task.description}
-            
-            利用可能なモジュール:
-            {modules_info}
-            """)
-            
-            # 型ヒントの直接インポートを修正
-            missing_modules, mock_main_code = self._check_imports(mock_main_code)
-            
-            # インポート文を抽出（型ヒントの修正後）
-            import re
-            import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
-            imports = re.findall(import_pattern, mock_main_code)
-            
-            # メインコードからインポート文を削除
-            main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
-            
-            imports_text = "\n".join(imports) if imports else "# No additional imports"
-            
-            main_code_lines = main_code_cleaned.split('\n')
-            indented_main_code = []
-            for line in main_code_lines:
-                if line.strip():  # 空行でない場合
-                    if not line.startswith('    '):  # すでにインデントされていない場合
-                        indented_main_code.append('        ' + line)  # 8スペースのインデント（try内のコード用）
-                    else:
-                        indented_main_code.append('    ' + line)
-                else:
-                    indented_main_code.append(line)  # 空行はそのまま
-            
-            # 安全なテンプレート置換のためのディクショナリを作成
-            format_dict = {
-                "imports": imports_text,
-                "main_code": '\n'.join(indented_main_code),
-            }
-            
-            try:
-                if "{imports}" in template and "{main_code}" in template:
-                    from string import Template
-                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
-                    t = Template(safe_template)
-                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
-                else:
-                    print("Warning: Template missing required placeholders. Using basic template.")
-                    basic_template = r'''
-import os
-import json
-import time
-import re
-import datetime
-import traceback
-from typing import Dict, List, Any, Optional, Union, Tuple
-{0}
-
-            
-            except Exception as e:
-
-            
-                print(f"Error: {str(e)}")
-
-            
-                return None
-
-def main():
-    try:
-{1}
-
-    except Exception as e:
-
-        print(f"Error: {str(e)}")
-
-        return None
-    except Exception as e:
-        print(f"Error: {{str(e)}}")
-        traceback.print_exc()
-        return str(e)
-    
-    return "Task completed successfully"
-
-if __name__ == "__main__":
-    result = main()
-'''.format(format_dict["imports"], format_dict["main_code"])
-                    full_code = task_info_code + basic_template
-                
-                # 最終的な型ヒントの直接インポートを修正
-                missing_modules, full_code = self._check_imports(full_code)
-                return full_code
-            except Exception as e:
-                print(f"Error formatting template in mock mode: {str(e)}")
-                return task_info_code + mock_main_code
-        
-        # モジュール情報をプロンプトに整形
-        modules_info = "\n\n".join([
-            f"Module: {module['name']}\nDescription: {module['description']}\n```python\n{module['code']}\n```"
-            for module in modules[:3]  # 最大3つのモジュールを使用
-        ])
-        
-        knowledge_insights = ""
-        try:
-            import re
-            knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
-            if os.path.exists(knowledge_db_path):
-                with open(knowledge_db_path, 'r', encoding='utf-8') as f:
-                    knowledge_db = json.load(f)
-                
-                keywords = re.findall(r'\b\w{4,}\b', task.description.lower())
-                
-                related_knowledge = []
-                for subject, data in knowledge_db.items():
-                    for keyword in keywords:
-                        if keyword in subject.lower() or (data.get("fact") and keyword in data.get("fact", "").lower()):
-                            related_knowledge.append({
-                                "subject": subject,
-                                "fact": data.get("fact"),
-                                "confidence": data.get("confidence", 0)
-                            })
-                            break
-                
-                if related_knowledge:
-                    knowledge_insights += "\nRelevant knowledge from previous tasks:\n"
-                    for k in related_knowledge[:3]:
-                        knowledge_insights += f"- {k['subject']}: {k['fact']} (confidence: {k['confidence']})\n"
-
-        except Exception as e:
-
-            print(f"Error: {str(e)}")
-
-            return None
-        except Exception as e:
-            print(f"Error getting knowledge insights: {str(e)}")
-        
-        thinking_insights = ""
-        try:
-            thinking_log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
-            if os.path.exists(thinking_log_path):
-                recent_thoughts = []
-                with open(thinking_log_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        try:
-                            thought = json.loads(line.strip())
-                            if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
-                                recent_thoughts.append(thought)
-
-        except Exception as e:
-
-            print(f"Error: {str(e)}")
-
-            return None
-                        except:
-                            pass
-                
-                if recent_thoughts:
-                    thinking_insights += "\nRecent thinking insights:\n"
-                    for thought in recent_thoughts[-3:]:
-                        thought_type = thought.get("type", "")
-                        content = thought.get("content", {})
-                        if thought_type == "continuous_thinking":
-                            thinking_insights += f"- Thought: {content.get('thought', '')}\n"
-                        elif thought_type == "knowledge_reflection":
-                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')}\n"
-                        elif thought_type == "web_knowledge_update":
-                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
-        except Exception as e:
-            print(f"Error getting thinking insights: {str(e)}")
-        
-        prompt = f"""
-        Overall Goal: {goal}
-        
-        Task Description: {task.description}
-        
-        Dependent Tasks:
-        {json.dumps(dependent_tasks, indent=2)}
-        
-        Available Reusable Modules:
-        {modules_info}
-        
-        {knowledge_insights}
-        
-        {thinking_insights}
-        
-        Write a Python script to accomplish this task. The script should:
-        1. Reuse the provided modules whenever possible
-        2. Be self-contained and handle errors gracefully
-        3. Store the final result in a variable called 'result'
-        4. Include appropriate error handling
-        5. Use the knowledge database and thinking log functions provided in the template
-        6. Actively contribute to the continuous learning system by:
-           - Logging important thoughts and decisions
-           - Updating the knowledge database with new insights
-           - Retrieving and building upon existing knowledge
-           - Testing hypotheses and recording results
-        
-        IMPORTANT: 
-        - Ensure consistent indentation throughout your code. Do not use tabs. Use 4 spaces for indentation.
-        - Your script will have access to these helper functions:
-          * load_knowledge_db() - Loads the knowledge database
-          * save_knowledge_db(knowledge_db) - Saves the knowledge database
-          * log_thought(thought_type, content) - Logs a thought to the thinking log
-          * update_knowledge(subject, fact, confidence) - Updates knowledge in the database
-          * get_knowledge(subject) - Gets knowledge about a specific subject
-          * get_related_knowledge(keywords, limit) - Gets knowledge related to keywords
-        
-        Follow these best practices:
-        - Include all necessary imports at the top
-        - Import and use the provided modules instead of reimplementing the same functionality
-        - Handle potential missing dependencies with try/except blocks
-        - For file operations, use 'with' statements and handle file not found errors
-        - Use the knowledge database to store any valuable insights discovered during task execution
-        - Log important thoughts and decisions to the thinking log
-        - Be sure main code starts at the left margin (column 0) with no leading whitespace
-        - Implement a research-oriented approach:
-          * Formulate hypotheses based on existing knowledge
-          * Test hypotheses through data analysis or information gathering
-          * Record results and update knowledge accordingly
-          * Consider alternative explanations and approaches
-        
-        Only provide the code that would replace the `{{main_code}}` part in the template.
-        Do not include the template structure, as it will be added automatically.
-        """
-        
-        # メインコード部分を生成
-        main_code = self.llm.generate_code(prompt)
-        
-        # インポート文を抽出
-        import re
-        import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
-        imports = re.findall(import_pattern, main_code)
-                # 最終的な型ヒントの直接インポートを修正
-                missing_modules, full_code = self._check_imports(full_code)
-                return full_code
-            except Exception as e:
-                print(f"Error formatting template: {str(e)}")
-                return task_info_code + mock_main_code
-
-        # 型ヒントの直接インポートを検出して修正
-        
-        
-        python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                            "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-        
-        processed_imports = []
-        type_hints_to_import = set()
-        
-        for imp in imports:
-            if any(f"import {hint}" == imp.strip() for hint in python_type_hints):
-                hint = imp.strip().replace("import ", "")
-                type_hints_to_import.add(hint)
-                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
+            if "{imports}" in template and "{main_code}" in template:
+                from string import Template
+                safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
+                t = Template(safe_template)
+                full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
             else:
-                processed_imports.append(imp)
-        
-        if type_hints_to_import:
-            processed_imports.append(f"from typing import {', '.join(sorted(type_hints_to_import))}")
-        
-        imports_text = "\n".join(processed_imports) if processed_imports else "# No additional imports"
-        
-        # メインコードからインポート文を削除
-        main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
-        
-        # 安全なテンプレート置換のためのディクショナリを作成
-        format_dict = {
-            "imports": imports_text,
-            "main_code": main_code_cleaned,
-        }
-        
-        try:
-                if "{imports}" in template and "{main_code}" in template:
-                    from string import Template
-                    safe_template = template.replace("{imports}", "___IMPORTS___").replace("{main_code}", "___MAIN_CODE___")
-                    t = Template(safe_template)
-                    full_code = task_info_code + t.safe_substitute({}).replace("___IMPORTS___", format_dict["imports"]).replace("___MAIN_CODE___", format_dict["main_code"])
-                else:
-                    print("Warning: Template missing required placeholders. Using basic template.")
-                    basic_template = r'''
+                print("Warning: Template missing required placeholders. Using basic template.")
+                basic_template = r'''
 import os
 import json
 import time
@@ -1148,24 +491,10 @@ import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 {0}
 
-        
-        except Exception as e:
-
-        
-            print(f"Error: {str(e)}")
-
-        
-            return None
-
 def main():
     try:
 {1}
 
-    except Exception as e:
-
-        print(f"Error: {str(e)}")
-
-        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         traceback.print_exc()
@@ -1176,92 +505,67 @@ def main():
 if __name__ == "__main__":
     result = main()
 '''.format(format_dict["imports"], format_dict["main_code"])
-                    full_code = task_info_code + basic_template
-                # 最終的な型ヒントの直接インポートを修正
-                missing_modules, full_code = self._check_imports(full_code)
-                return full_code
-            except Exception as e:
-                print(f"Error formatting template: {str(e)}")
-                return task_info_code + mock_main_code
-
-        # 型ヒントの直接インポートを検出して修正
-        
+                full_code = task_info_code + basic_template
             
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-            
-            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
-            if re.search(direct_type_import_pattern, full_code):
-                print(f"Warning: Direct import of type hints detected in full script. Fixing...")
-                required_type_hints = []
-                for hint in python_type_hints:
-                    if re.search(r'import\s+' + hint + r'\b', full_code):
-                        required_type_hints.append(hint)
-                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
-                
-                if 'from typing import' in full_code:
-                    for hint in required_type_hints:
-                        if f'from typing import {hint}' not in full_code and \
-                           not re.search(r'from typing import [^,]*,\s*' + hint + r'\b', full_code) and \
-                           not re.search(r'from typing import [^,]*,\s*[^,]*,\s*' + hint + r'\b', full_code):
-                            full_code = re.sub(r'from typing import (.+)', r'from typing import \1, ' + hint, full_code)
-                else:
-                    if required_type_hints:
-                        type_import = f"from typing import {', '.join(required_type_hints)}"
-                        full_code = type_import + "\n" + full_code
-            
+            missing_modules, full_code = self._check_imports(full_code)
             return full_code
         except Exception as e:
             print(f"Error formatting template: {str(e)}")
-            # フォールバック: 基本的なテンプレートを使用
-            fallback_template = """
-# 必要なライブラリのインポート
-{imports}
-
-def main():
-    try:
-        # メイン処理
-        {main_code}
-
-    except Exception as e:
-
-        print(f"Error: {str(e)}")
-
-        return None
-    except Exception as e:
-        print(f"Error: {{str(e)}}")
-        return str(e)
+            return task_info_code + imports_text + "\n\n" + main_code_cleaned
     
-    return "Task completed successfully"
-
-# スクリプト実行
-if __name__ == "__main__":
-    result = main()
-"""
-            full_code = task_info_code + fallback_template.format(**format_dict)
+    def _is_stdlib_module(self, module_name: str):
+        """モジュールが標準ライブラリかどうかを判定"""
+        import sys
+        import importlib.util
+        
+        stdlib_modules = {
+            "os", "sys", "re", "json", "time", "datetime", "math", "random", 
+            "collections", "itertools", "functools", "typing", "pathlib", "io",
+            "traceback", "logging", "argparse", "unittest", "string", "csv",
+            "hashlib", "base64", "uuid", "copy", "shutil", "tempfile", "glob",
+            "pickle", "sqlite3", "xml", "html", "urllib", "http", "socket",
+            "email", "mimetypes", "zipfile", "tarfile", "gzip", "bz2", "lzma",
+            "threading", "multiprocessing", "concurrent", "subprocess", "asyncio",
+            "contextlib", "warnings", "enum", "dataclasses", "statistics", "decimal",
+            "fractions", "numbers", "cmath", "array", "struct", "codecs", "unicodedata",
+            "calendar", "locale", "gettext", "cmd", "configparser", "platform", "gc",
+            "inspect", "ast", "dis", "tokenize", "keyword", "textwrap", "difflib",
+            "heapq", "bisect", "weakref", "types", "abc", "builtins", "operator",
+            "importlib", "pkgutil", "modulefinder", "runpy", "pdb", "doctest",
+            "pprint", "reprlib", "enum", "venv", "sysconfig", "site", "signal",
+            "atexit", "stat", "fileinput", "fnmatch", "linecache", "rlcompleter",
+            "code", "codeop", "timeit", "trace", "profile", "cProfile", "pstats",
+            "tabnanny", "compileall", "py_compile", "zipapp", "faulthandler",
+            "resource", "posix", "pwd", "grp", "termios", "tty", "pty", "fcntl",
+            "pipes", "syslog", "aifc", "audioop", "chunk", "colorsys", "imghdr",
+            "sndhdr", "ossaudiodev", "getopt", "optparse", "readline", "nis",
+            "curses", "turtle", "smtplib", "poplib", "imaplib", "nntplib", "smtpd",
+            "telnetlib", "ftplib", "uu", "xdrlib", "netrc", "cgi", "cgitb",
+            "wsgiref", "webbrowser", "uuid", "ipaddress", "hmac", "secrets",
+            "ssl", "selectors", "parser", "symbol", "token", "symtable", "zoneinfo"
+        }
+        
+        if module_name in stdlib_modules:
+            return True
+        
+        try:
+            spec = importlib.util.find_spec(module_name)
+            if spec is None:
+                return False
             
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
-            
-            direct_type_import_pattern = r'import\s+(' + '|'.join(python_type_hints) + r')\b'
-            if re.search(direct_type_import_pattern, full_code):
-                print(f"Warning: Direct import of type hints detected in fallback script. Fixing...")
-                required_type_hints = []
-                for hint in python_type_hints:
-                    if re.search(r'import\s+' + hint + r'\b', full_code):
-                        required_type_hints.append(hint)
-                        full_code = re.sub(r'import\s+' + hint + r'\b', '', full_code)
+            for path in sys.path:
+                if path.endswith(("site-packages", "dist-packages")):
+                    continue  # サードパーティのパスはスキップ
                 
-                if required_type_hints:
-                    type_import = f"from typing import {', '.join(required_type_hints)}"
-                    full_code = type_import + "\n" + full_code
+                if spec.origin and spec.origin.startswith(path):
+                    return True
             
-            return full_code
+            return False
+        except (ImportError, AttributeError, ValueError):
+            return False
     
-    
-        def _check_imports(self, code: str) -> tuple:
-        """
-        Detect missing modules from import statements in code and fix direct type hint imports.
+    def _check_imports(self, code: str) -> tuple:
+        """Detect missing modules from import statements in code and fix direct type hint imports.
         
         Args:
             code: The Python code to check
@@ -1274,39 +578,37 @@ if __name__ == "__main__":
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
         
-        lines = code.split('\n')
-        import_lines = []
-        non_import_lines = []
+        direct_imports_to_fix = []
+        for hint in python_type_hints:
+            if re.search(r'import\s+' + hint + r'\s*$', code, re.MULTILINE):
+                direct_imports_to_fix.append(hint)
+                code = re.sub(r'import\s+' + hint + r'\s*($|\n)', '', code)
+                print(f"Warning: '{hint}' is a Python type hint. Converting to 'from typing import {hint}'.")
         
-        for line in lines:
-            if line.strip().startswith('import ') or line.strip().startswith('from '):
-                import_lines.append(line)
+        if direct_imports_to_fix:
+            typing_import_match = re.search(r'from\s+typing\s+import\s+([^\n]+)', code)
+            if typing_import_match:
+                existing_imports = typing_import_match.group(1)
+                existing_hints = [hint.strip() for hint in existing_imports.split(',')]
+                
+                for hint in direct_imports_to_fix:
+                    if hint not in existing_hints:
+                        existing_hints.append(hint)
+                
+                new_typing_import = f"from typing import {', '.join(sorted(existing_hints))}"
+                code = re.sub(r'from\s+typing\s+import\s+([^\n]+)', new_typing_import, code)
             else:
-                non_import_lines.append(line)
-        
-        type_hints_to_import = set()
-        processed_imports = []
-        
-        for line in import_lines:
-            is_type_hint = False
-            for hint in python_type_hints:
-                if re.match(r'^\s*import\s+' + hint + r'\s*$', line):
-                    type_hints_to_import.add(hint)
-                    is_type_hint = True
-                    print(f"Warning: '{hint}' is a Python type hint. Converting to 'from typing import {hint}'.")
-                    break
-            
-            if not is_type_hint:
-                processed_imports.append(line)
-        
-        if type_hints_to_import:
-            typing_import = f"from typing import {', '.join(sorted(type_hints_to_import))}"
-            processed_imports.insert(0, typing_import)
+                new_typing_import = f"from typing import {', '.join(sorted(direct_imports_to_fix))}"
+                
+                first_import_match = re.search(r'^(import|from)\s+', code, re.MULTILINE)
+                if first_import_match:
+                    pos = first_import_match.start()
+                    code = code[:pos] + new_typing_import + "\n" + code[pos:]
+                else:
+                    code = new_typing_import + "\n\n" + code
         
         import_pattern = r'(?:from|import)\s+([\w.]+)'
-        imports = []
-        for line in processed_imports:
-            imports.extend(re.findall(import_pattern, line))
+        imports = re.findall(import_pattern, code)
         
         missing = []
         for imp in imports:
@@ -1315,102 +617,22 @@ if __name__ == "__main__":
             if self._is_stdlib_module(module_name):
                 continue
                 
-            if module_name in python_type_hints:
-                print(f"Warning: '{module_name}' is a Python type hint. Converting to 'from typing import {module_name}'.")
+            if module_name in python_type_hints or module_name == 'typing':
                 continue
             
+            try:
+                __import__(module_name)
+            except ImportError:
+                if module_name not in missing:
+                    missing.append(module_name)
         
-        fixed_code = '\n'.join(processed_imports)
-        if fixed_code and non_import_lines and non_import_lines[0]:
-            fixed_code += '\n\n'
-        fixed_code += '\n'.join(non_import_lines)
-        
-        return missing, fixed_code
-def _is_stdlib_module(self, module_name: str) -> bool:
-        """モジュールが標準ライブラリの一部かどうかを判定"""
-        # 一般的な標準ライブラリ
-        stdlib_modules = {
-            "os", "sys", "math", "random", "datetime", "time", "json", 
-            "csv", "re", "collections", "itertools", "functools", "io",
-            "pathlib", "shutil", "glob", "argparse", "logging", "unittest",
-            "threading", "multiprocessing", "subprocess", "socket", "email",
-            "smtplib", "urllib", "http", "xml", "html", "tkinter", "sqlite3",
-            "hashlib", "uuid", "tempfile", "copy", "traceback", "gc", "inspect"
-        }
-        
-        if module_name in stdlib_modules:
-            return True
-            
-        try:
-            # 標準ライブラリかチェック
-            spec = importlib.util.find_spec(module_name)
-            return spec is not None and (
-                spec.origin is not None and
-                "site-packages" not in spec.origin and 
-                "dist-packages" not in spec.origin
-            )
+        return missing, code
 
-            
-        except Exception as e:
-
-            
-            print(f"Error: {str(e)}")
-
-            
-            return None
-        except (ImportError, AttributeError):
-            return False
+def _fix_json_syntax(json_str):
+    """JSONの構文を修正"""
+    json_str = re.sub(r'```json', '', json_str)
+    json_str = re.sub(r'```', '', json_str)
     
-    def _extract_json(self, text: str) -> str:
-        """テキストからJSONを抽出し、必要に応じて修正"""
-        # JSON配列を検索
-        json_match = re.search(r'\[[\s\S]*\]', text)
-        if json_match:
-            json_str = json_match.group(0)
-            try:
-                json.loads(json_str)
-                return json_str
-
-            except Exception as e:
-
-                print(f"Error: {str(e)}")
-
-                return None
-            except json.JSONDecodeError as e:
-                print(f"JSONの解析エラー: {str(e)}")
-                fixed_json = self._fix_json_syntax(json_str)
-                return fixed_json
-        
-        # JSON オブジェクトを検索
-        json_match = re.search(r'\{[\s\S]*\}', text)
-        if json_match:
-            json_str = json_match.group(0)
-            try:
-                json.loads(json_str)
-                return json_str
-
-            except Exception as e:
-
-                print(f"Error: {str(e)}")
-
-                return None
-            except json.JSONDecodeError as e:
-                print(f"JSONの解析エラー: {str(e)}")
-                fixed_json = self._fix_json_syntax(json_str)
-                return fixed_json
-        
-        # JSONが見つからない場合は元のテキストを返す
-        return text
-        
-    def _fix_json_syntax(self, json_str: str) -> str:
-        """一般的なJSON構文エラーを修正"""
-        json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
-        
-        json_str = re.sub(r'([{,]\s*)([a-zA-Z0-9_]+)(\s*:)', r'\1"\2"\3', json_str)
-        
-        json_str = re.sub(r':\s*([a-zA-Z][a-zA-Z0-9_]*)\s*([,}])', r': "\1"\2', json_str)
-        
-        json_str = re.sub(r'([{,]\s*"[^"]*)\s*:\s*([^",{}\[\]]+)([,}])', r'\1": "\2"\3', json_str)
-        
-        print(f"JSONを修正しました: {json_str[:100]}...")
-        return json_str
+    json_str = json_str.strip()
+    
+    return json_str

@@ -677,23 +677,23 @@ def get_template_for_task(task_description, required_libraries=None):
     template = template.replace("{", "{{").replace("}", "}}")
     
     template = template.replace("{{imports}}", "{imports}")
-    template = template.replace("{        {main_code}}", "        {main_code}")
+    template = template.replace("{{main_code}}", "{main_code}")
 
-    if "        {main_code}" in template:
-        try_block_pattern = r'try\s*:\s*\n[^\n]*        {main_code}'
+    if "{main_code}" in template:
+        try_block_pattern = r'try\s*:\s*\n[^\n]*{main_code}'
         if re.search(try_block_pattern, template):
-            if "except" not in template.split("        {main_code}")[1]:
-                template = template.replace("        {main_code}", "        {main_code}\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
+            if "except" not in template.split("{main_code}")[1]:
+                template = template.replace("{main_code}", "{main_code}\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
         else:
-            template = template.replace("        {main_code}", "try:\n        {main_code}\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
+            template = template.replace("{main_code}", "try:\n        {main_code}\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
     
     template = template.replace('print(f"Error: {{{{str(e)}}}}")', 'print(f"Error: {str(e)}")')
     template = template.replace('print(f"エラー: {{{{str(e)}}}}")', 'print(f"エラー: {str(e)}")')
     
-    if "        {main_code}" in template:
-        try_block_pattern = r'try\s*:\s*\n[^\n]*        {main_code}'
+    if "{main_code}" in template:
+        try_block_pattern = r'try\s*:\s*\n[^\n]*{main_code}'
         if re.search(try_block_pattern, template):
-            if "except" not in template.split("        {main_code}")[1]:
+            if "except" not in template.split("{main_code}")[1]:
                 template = template.replace("        {main_code}", "        {main_code}\n        # 例外処理を確保\n    except Exception as e:\n        print(f\"Error: {str(e)}\")\n        traceback.print_exc()\n        return str(e)")
     
     empty_typing_import = re.search(r'from\s+typing\s+import\s*\n', template)
@@ -709,14 +709,14 @@ def get_template_for_task(task_description, required_libraries=None):
                              'from typing import Dict, List, Any, Optional, Union, Tuple', 
                              template)
     
-    if "        {main_code}" in template:
+    if "{main_code}" in template:
         template = template.replace("def main():", """def main():
     global get_related_knowledge, load_knowledge_db, save_knowledge_db, log_thought
     global add_insight, add_hypothesis, verify_hypothesis, add_conclusion
     global request_multi_agent_discussion, get_task_related_knowledge, get_task_insights
     global update_knowledge, verify_hypothesis_with_simulation""")
     
-    if "{imports}" not in template or "        {main_code}" not in template:
+    if "{imports}" not in template or "{main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
         # 基本テンプレートを使用（インデントに注意）
         template = """
