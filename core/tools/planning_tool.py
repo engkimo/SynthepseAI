@@ -50,6 +50,15 @@ class PlanningTool(BaseTool):
         
         try:
             return handler(**kwargs)
+
+        
+        except Exception as e:
+
+        
+            print(f"Error: {str(e)}")
+
+        
+            return None
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
@@ -111,6 +120,15 @@ class PlanningTool(BaseTool):
             self.task_db.update_task_code(task_id, code)
             
             return ToolResult(True, code)
+
+        
+        except Exception as e:
+
+        
+            print(f"Error: {str(e)}")
+
+        
+            return None
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
@@ -163,6 +181,15 @@ class PlanningTool(BaseTool):
             result = local_vars.get("result", "Task executed successfully but no result variable found")
             
             return ToolResult(True, result)
+
+        
+        except Exception as e:
+
+        
+            print(f"Error: {str(e)}")
+
+        
+            return None
         except ModuleNotFoundError as e:
             # モジュールが見つからないエラー
             module_name = str(e).split("'")[1] if "'" in str(e) else str(e)
@@ -238,6 +265,12 @@ class PlanningTool(BaseTool):
                         for pattern in error_patterns:
                             error_type = pattern.get("error_type", "unknown")
                             learning_insights += f"- Watch out for {error_type} errors\n"
+
+            except Exception as e:
+
+                print(f"Error: {str(e)}")
+
+                return None
             except Exception as e:
                 print(f"Error getting learning insights: {str(e)}")
         
@@ -304,6 +337,15 @@ class PlanningTool(BaseTool):
                     task["required_libraries"] = []
             
             return tasks
+
+        
+        except Exception as e:
+
+        
+            print(f"Error: {str(e)}")
+
+        
+            return None
         except Exception as e:
             raise ValueError(f"Failed to parse plan: {str(e)}")
     
@@ -337,6 +379,12 @@ class PlanningTool(BaseTool):
                         persistent_thinking_knowledge = f"""
 # {json.dumps(knowledge, ensure_ascii=False, indent=2)}
 """
+
+            except Exception as e:
+
+                print(f"Error: {str(e)}")
+
+                return None
             except Exception as e:
                 print(f"持続思考AIからの知識取得エラー: {str(e)}")
         
@@ -375,10 +423,6 @@ class PlanningTool(BaseTool):
                         indented_main_code.append('    ' + line)
                 else:
                     indented_main_code.append(line)  # 空行はそのまま
-                    else:
-                        indented_main_code.append(line)
-                else:
-                    indented_main_code.append(line)  # 空行はそのまま
             
             # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
@@ -404,9 +448,24 @@ import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 {0}
 
+            
+            except Exception as e:
+
+            
+                print(f"Error: {str(e)}")
+
+            
+                return None
+
 def main():
     try:
 {1}
+
+    except Exception as e:
+
+        print(f"Error: {str(e)}")
+
+        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         traceback.print_exc()
@@ -437,6 +496,12 @@ if __name__ == "__main__":
                     for error in similar_errors:
                         error_type = error.get("error_type", "unknown")
                         learning_insights += f"- {error_type} errors can occur in this kind of task\n"
+
+            except Exception as e:
+
+                print(f"Error: {str(e)}")
+
+                return None
             except Exception as e:
                 print(f"Error getting error patterns: {str(e)}")
         
@@ -484,6 +549,12 @@ if __name__ == "__main__":
                     knowledge_insights += "\nRelevant knowledge from previous tasks:\n"
                     for k in related_knowledge[:3]:
                         knowledge_insights += f"- {k['subject']}: {k['fact']} (confidence: {k['confidence']})\n"
+
+        except Exception as e:
+
+            print(f"Error: {str(e)}")
+
+            return None
         except Exception as e:
             print(f"Error getting knowledge insights: {str(e)}")
         
@@ -498,6 +569,12 @@ if __name__ == "__main__":
                             thought = json.loads(line.strip())
                             if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
                                 recent_thoughts.append(thought)
+
+        except Exception as e:
+
+            print(f"Error: {str(e)}")
+
+            return None
                         except:
                             pass
                 
@@ -578,6 +655,15 @@ if __name__ == "__main__":
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
+                # 最終的な型ヒントの直接インポートを修正
+                missing_modules, full_code = self._check_imports(full_code)
+                return full_code
+            except Exception as e:
+                print(f"Error formatting template: {str(e)}")
+                return task_info_code + mock_main_code
+
+        # 型ヒントの直接インポートを検出して修正
+        
         
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -632,9 +718,24 @@ import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 {0}
 
+        
+        except Exception as e:
+
+        
+            print(f"Error: {str(e)}")
+
+        
+            return None
+
 def main():
     try:
 {1}
+
+    except Exception as e:
+
+        print(f"Error: {str(e)}")
+
+        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         traceback.print_exc()
@@ -646,6 +747,15 @@ if __name__ == "__main__":
     result = main()
 '''.format(format_dict["imports"], format_dict["main_code"])
                     full_code = task_info_code + basic_template
+                # 最終的な型ヒントの直接インポートを修正
+                missing_modules, full_code = self._check_imports(full_code)
+                return full_code
+            except Exception as e:
+                print(f"Error formatting template: {str(e)}")
+                return task_info_code + mock_main_code
+
+        # 型ヒントの直接インポートを検出して修正
+        
             
             python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                                 "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -682,6 +792,12 @@ def main():
     try:
         # メイン処理
         {main_code}
+
+    except Exception as e:
+
+        print(f"Error: {str(e)}")
+
+        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         return str(e)
@@ -778,10 +894,6 @@ if __name__ == "__main__":
                         indented_main_code.append('    ' + line)
                 else:
                     indented_main_code.append(line)  # 空行はそのまま
-                    else:
-                        indented_main_code.append(line)
-                else:
-                    indented_main_code.append(line)  # 空行はそのまま
             
             # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
@@ -807,9 +919,24 @@ import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 {0}
 
+            
+            except Exception as e:
+
+            
+                print(f"Error: {str(e)}")
+
+            
+                return None
+
 def main():
     try:
 {1}
+
+    except Exception as e:
+
+        print(f"Error: {str(e)}")
+
+        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         traceback.print_exc()
@@ -860,6 +987,12 @@ if __name__ == "__main__":
                     knowledge_insights += "\nRelevant knowledge from previous tasks:\n"
                     for k in related_knowledge[:3]:
                         knowledge_insights += f"- {k['subject']}: {k['fact']} (confidence: {k['confidence']})\n"
+
+        except Exception as e:
+
+            print(f"Error: {str(e)}")
+
+            return None
         except Exception as e:
             print(f"Error getting knowledge insights: {str(e)}")
         
@@ -874,6 +1007,12 @@ if __name__ == "__main__":
                             thought = json.loads(line.strip())
                             if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
                                 recent_thoughts.append(thought)
+
+        except Exception as e:
+
+            print(f"Error: {str(e)}")
+
+            return None
                         except:
                             pass
                 
@@ -953,6 +1092,15 @@ if __name__ == "__main__":
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
+                # 最終的な型ヒントの直接インポートを修正
+                missing_modules, full_code = self._check_imports(full_code)
+                return full_code
+            except Exception as e:
+                print(f"Error formatting template: {str(e)}")
+                return task_info_code + mock_main_code
+
+        # 型ヒントの直接インポートを検出して修正
+        
         
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -1000,9 +1148,24 @@ import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 {0}
 
+        
+        except Exception as e:
+
+        
+            print(f"Error: {str(e)}")
+
+        
+            return None
+
 def main():
     try:
 {1}
+
+    except Exception as e:
+
+        print(f"Error: {str(e)}")
+
+        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         traceback.print_exc()
@@ -1014,6 +1177,15 @@ if __name__ == "__main__":
     result = main()
 '''.format(format_dict["imports"], format_dict["main_code"])
                     full_code = task_info_code + basic_template
+                # 最終的な型ヒントの直接インポートを修正
+                missing_modules, full_code = self._check_imports(full_code)
+                return full_code
+            except Exception as e:
+                print(f"Error formatting template: {str(e)}")
+                return task_info_code + mock_main_code
+
+        # 型ヒントの直接インポートを検出して修正
+        
             
             python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                                 "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
@@ -1050,6 +1222,12 @@ def main():
     try:
         # メイン処理
         {main_code}
+
+    except Exception as e:
+
+        print(f"Error: {str(e)}")
+
+        return None
     except Exception as e:
         print(f"Error: {{str(e)}}")
         return str(e)
@@ -1080,108 +1258,75 @@ if __name__ == "__main__":
             
             return full_code
     
-    def _check_imports(self, code: str) -> Tuple[List[str], str]:
+    
+        def _check_imports(self, code: str) -> tuple:
         """
-        コード内のインポートステートメントから不足モジュールを検出し、
-        型ヒントの直接インポートを修正する
+        Detect missing modules from import statements in code and fix direct type hint imports.
         
+        Args:
+            code: The Python code to check
+            
         Returns:
-            Tuple[List[str], str]: 不足モジュールのリストと修正されたコード
+            A tuple of (missing_modules, fixed_code)
         """
-        placeholder_replacements = {}
-        placeholder_pattern = r'(\{[a-zA-Z_][a-zA-Z0-9_]*\})'
+        import re
         
-        for i, match in enumerate(re.finditer(placeholder_pattern, code)):
-            placeholder = match.group(1)
-            replacement = f"__PLACEHOLDER_{i}__"
-            placeholder_replacements[replacement] = placeholder
-            code = code.replace(placeholder, replacement, 1)
-        
-        import_pattern = r'(?:from|import)\s+([\w.]+)'
-        imports = re.findall(import_pattern, code)
-        
-        modified_code = code
-        
-        # 型ヒントの直接インポートを検出して修正
         python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
                             "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
         
-        existing_typing_imports = []
-        typing_import_match = re.search(r'from\s+typing\s+import\s+([^\n]+)', modified_code)
-        if typing_import_match:
-            existing_imports_str = typing_import_match.group(1)
-            existing_typing_imports = [imp.strip() for imp in existing_imports_str.split(',') if imp.strip()]
-            modified_code = re.sub(r'from\s+typing\s+import\s+[^\n]+\n?', '', modified_code)
+        lines = code.split('\n')
+        import_lines = []
+        non_import_lines = []
         
-        direct_imports = []
-        for hint in python_type_hints:
-            direct_import_pattern = r'import\s+' + hint + r'\b'
-            if re.search(direct_import_pattern, modified_code):
-                print(f"⚠️ '{hint}'はPythonの型ヒントです。'from typing import {hint}'に変換します。")
-                direct_imports.append(hint)
-                modified_code = re.sub(direct_import_pattern, '', modified_code)
+        for line in lines:
+            if line.strip().startswith('import ') or line.strip().startswith('from '):
+                import_lines.append(line)
+            else:
+                non_import_lines.append(line)
         
-        if direct_imports or existing_typing_imports:
-            if direct_imports:
-                print(f"Warning: Direct import of type hints detected. These should be imported from typing module.")
+        type_hints_to_import = set()
+        processed_imports = []
+        
+        for line in import_lines:
+            is_type_hint = False
+            for hint in python_type_hints:
+                if re.match(r'^\s*import\s+' + hint + r'\s*$', line):
+                    type_hints_to_import.add(hint)
+                    is_type_hint = True
+                    print(f"Warning: '{hint}' is a Python type hint. Converting to 'from typing import {hint}'.")
+                    break
             
-            all_type_hints = sorted(list(set(existing_typing_imports + direct_imports)))
-            
-            if all_type_hints:
-                type_import = f"from typing import {', '.join(all_type_hints)}"
-                
-                import_section_end = 0
-                import_lines = re.findall(r'(?:^|\n)((?:import|from)\s+[^\n]+)', modified_code)
-                if import_lines:
-                    last_import = import_lines[-1]
-                    import_section_end = modified_code.find(last_import) + len(last_import)
-                
-                if import_section_end > 0:
-                    modified_code = modified_code[:import_section_end] + "\n" + type_import + modified_code[import_section_end:]
-                else:
-                    modified_code = type_import + "\n\n" + modified_code.lstrip()
-                
-                modified_code = re.sub(r'\n\s*\n\s*\n', '\n\n', modified_code)
+            if not is_type_hint:
+                processed_imports.append(line)
         
-        empty_typing_import = re.search(r'from\s+typing\s+import\s*\n', modified_code)
-        if empty_typing_import:
-            modified_code = re.sub(r'from\s+typing\s+import\s*\n', 'from typing import Dict, List, Any, Optional, Union, Tuple\n', modified_code)
+        if type_hints_to_import:
+            typing_import = f"from typing import {', '.join(sorted(type_hints_to_import))}"
+            processed_imports.insert(0, typing_import)
         
-        for replacement, placeholder in placeholder_replacements.items():
-            modified_code = modified_code.replace(replacement, placeholder)
+        import_pattern = r'(?:from|import)\s+([\w.]+)'
+        imports = []
+        for line in processed_imports:
+            imports.extend(re.findall(import_pattern, line))
         
         missing = []
         for imp in imports:
-            # モジュール名を取得（from x.y import z の場合は x）
             module_name = imp.split('.')[0]
             
-            # 標準ライブラリはスキップ
             if self._is_stdlib_module(module_name):
                 continue
                 
-            python_type_hints = ["Dict", "List", "Tuple", "Set", "FrozenSet", "Any", "Optional", 
-                                "Union", "Callable", "Type", "TypeVar", "Generic", "Iterable", "Iterator"]
             if module_name in python_type_hints:
-                print(f"⚠️ '{module_name}'はPythonの型ヒントです。'from typing import {module_name}'に変換します。")
+                print(f"Warning: '{module_name}' is a Python type hint. Converting to 'from typing import {module_name}'.")
                 continue
-                
-            # モジュールが利用可能かチェック
-            try:
-                # bs4は特殊ケース
-                if module_name == "bs4":
-                    importlib.import_module("bs4")
-                else:
-                    importlib.import_module(module_name)
-            except ImportError:
-                # bs4の場合は実際のパッケージ名を追加
-                if module_name == "bs4":
-                    missing.append("beautifulsoup4")
-                else:
-                    missing.append(module_name)
-                
-        return missing, modified_code
-    
-    def _is_stdlib_module(self, module_name: str) -> bool:
+            
+        
+        fixed_code = '\n'.join(processed_imports)
+        if fixed_code and non_import_lines and non_import_lines[0]:
+            fixed_code += '\n\n'
+        fixed_code += '\n'.join(non_import_lines)
+        
+        return missing, fixed_code
+def _is_stdlib_module(self, module_name: str) -> bool:
         """モジュールが標準ライブラリの一部かどうかを判定"""
         # 一般的な標準ライブラリ
         stdlib_modules = {
@@ -1204,6 +1349,15 @@ if __name__ == "__main__":
                 "site-packages" not in spec.origin and 
                 "dist-packages" not in spec.origin
             )
+
+            
+        except Exception as e:
+
+            
+            print(f"Error: {str(e)}")
+
+            
+            return None
         except (ImportError, AttributeError):
             return False
     
@@ -1216,6 +1370,12 @@ if __name__ == "__main__":
             try:
                 json.loads(json_str)
                 return json_str
+
+            except Exception as e:
+
+                print(f"Error: {str(e)}")
+
+                return None
             except json.JSONDecodeError as e:
                 print(f"JSONの解析エラー: {str(e)}")
                 fixed_json = self._fix_json_syntax(json_str)
@@ -1228,6 +1388,12 @@ if __name__ == "__main__":
             try:
                 json.loads(json_str)
                 return json_str
+
+            except Exception as e:
+
+                print(f"Error: {str(e)}")
+
+                return None
             except json.JSONDecodeError as e:
                 print(f"JSONの解析エラー: {str(e)}")
                 fixed_json = self._fix_json_syntax(json_str)
