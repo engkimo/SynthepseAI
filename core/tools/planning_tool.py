@@ -13,6 +13,10 @@ class PlanningTool(BaseTool):
     
     def __init__(self, llm=None, task_db=None, python_execute_tool=None):
         """初期化"""
+        super().__init__(
+            name="planning",
+            description="A tool for planning and managing the execution of complex tasks"
+        )
         self.llm = llm
         self.task_db = task_db
         self.python_execute_tool = python_execute_tool
