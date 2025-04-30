@@ -305,8 +305,13 @@ class TaskDatabase:
 
         return plan
 
-    def get_tasks_by_plan(self, plan_id: str) -> List[Task]:
-        """プランに属するすべてのタスクを取得"""
+    def get_tasks_by_plan(self, plan_id) -> List[Task]:
+        """Get all tasks belonging to a plan"""
+        if isinstance(plan_id, dict):
+            plan_id = plan_id.get('id')
+        elif hasattr(plan_id, 'id'):
+            plan_id = plan_id.id
+            
         cursor = self.connection.cursor()
         cursor.execute("SELECT * FROM tasks WHERE plan_id = ?", (plan_id,))
         rows = cursor.fetchall()
