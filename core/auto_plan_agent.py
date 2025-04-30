@@ -53,8 +53,13 @@ class AutoPlanAgent(ToolAgent):
         """持続思考AIを設定"""
         self.persistent_thinking = persistent_thinking
     
-    def _get_environment(self, plan_id: str) -> ProjectEnvironment:
-        """プロジェクト環境を取得（キャッシュがあればそれを使用）"""
+    def _get_environment(self, plan_id) -> ProjectEnvironment:
+        """Get project environment (use cache if available)"""
+        if isinstance(plan_id, dict):
+            plan_id = plan_id.get('id')
+        elif hasattr(plan_id, 'id'):
+            plan_id = plan_id.id
+            
         if plan_id not in self.environments:
             self.environments[plan_id] = ProjectEnvironment(self.workspace_dir, plan_id)
         return self.environments[plan_id]
