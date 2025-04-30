@@ -50,8 +50,7 @@ class PlanningTool(BaseTool):
         else:
             return ToolResult(
                 success=False,
-                message=f"Unknown action: {action}",
-                data=None
+                error=f"Unknown action: {action}"
             )
     
     def _handle_generate_plan(self, params):
@@ -59,8 +58,7 @@ class PlanningTool(BaseTool):
         if not params or "goal" not in params:
             return ToolResult(
                 success=False,
-                message="Missing required parameter: goal",
-                data=None
+                error="Missing required parameter: goal"
             )
         
         goal = params["goal"]
@@ -68,14 +66,12 @@ class PlanningTool(BaseTool):
             plan = self.generate_plan(goal)
             return ToolResult(
                 success=True,
-                message=f"Plan generated for goal: {goal}",
-                data={"plan_id": plan.id, "tasks": [t.to_dict() for t in plan.tasks]}
+                result={"plan_id": plan.id, "tasks": [t.to_dict() for t in plan.tasks]}
             )
         except Exception as e:
             return ToolResult(
                 success=False,
-                message=f"Failed to generate plan: {str(e)}",
-                data=None
+                error=f"Failed to generate plan: {str(e)}"
             )
     
     def _handle_generate_code(self, params):
@@ -83,8 +79,7 @@ class PlanningTool(BaseTool):
         if not params or "task_id" not in params:
             return ToolResult(
                 success=False,
-                message="Missing required parameter: task_id",
-                data=None
+                error="Missing required parameter: task_id"
             )
         
         task_id = params["task_id"]
@@ -93,22 +88,19 @@ class PlanningTool(BaseTool):
         if not task:
             return ToolResult(
                 success=False,
-                message=f"Task not found: {task_id}",
-                data=None
+                error=f"Task not found: {task_id}"
             )
         
         try:
             code = self.generate_python_script(task)
             return ToolResult(
                 success=True,
-                message=f"Code generated for task: {task_id}",
-                data={"code": code}
+                result={"code": code}
             )
         except Exception as e:
             return ToolResult(
                 success=False,
-                message=f"Failed to generate code: {str(e)}",
-                data=None
+                error=f"Failed to generate code: {str(e)}"
             )
     
     def _handle_execute_task(self, params):
@@ -116,8 +108,7 @@ class PlanningTool(BaseTool):
         if not params or "task_id" not in params:
             return ToolResult(
                 success=False,
-                message="Missing required parameter: task_id",
-                data=None
+                error="Missing required parameter: task_id"
             )
         
         task_id = params["task_id"]
@@ -126,15 +117,13 @@ class PlanningTool(BaseTool):
         if not task:
             return ToolResult(
                 success=False,
-                message=f"Task not found: {task_id}",
-                data=None
+                error=f"Task not found: {task_id}"
             )
         
         if not self.python_execute_tool:
             return ToolResult(
                 success=False,
-                message="Python execute tool not available",
-                data=None
+                error="Python execute tool not available"
             )
         
         try:
@@ -148,10 +137,10 @@ class PlanningTool(BaseTool):
             
             if result.success:
                 task.status = "completed"
-                task.result = result.data.get("result", "Task completed")
+                task.result = result.result.get("result", "Task completed") if hasattr(result, "result") else "Task completed"
             else:
                 task.status = "failed"
-                task.result = result.data.get("error", "Task failed")
+                task.result = result.error if hasattr(result, "error") else "Task failed"
             
             self.task_db.update_task(task)
             
@@ -163,8 +152,7 @@ class PlanningTool(BaseTool):
             
             return ToolResult(
                 success=False,
-                message=f"Failed to execute task: {str(e)}",
-                data={"error": str(e)}
+                error=f"Failed to execute task: {str(e)}"
             )
     
     def _handle_get_task_status(self, params):
@@ -172,8 +160,7 @@ class PlanningTool(BaseTool):
         if not params or "task_id" not in params:
             return ToolResult(
                 success=False,
-                message="Missing required parameter: task_id",
-                data=None
+                error="Missing required parameter: task_id"
             )
         
         task_id = params["task_id"]
@@ -182,14 +169,12 @@ class PlanningTool(BaseTool):
         if not task:
             return ToolResult(
                 success=False,
-                message=f"Task not found: {task_id}",
-                data=None
+                error=f"Task not found: {task_id}"
             )
         
         return ToolResult(
             success=True,
-            message=f"Task status: {task.status}",
-            data=task.to_dict()
+            result=task.to_dict()
         )
     
     def _handle_get_plan_status(self, params):
@@ -197,8 +182,7 @@ class PlanningTool(BaseTool):
         if not params or "plan_id" not in params:
             return ToolResult(
                 success=False,
-                message="Missing required parameter: plan_id",
-                data=None
+                error="Missing required parameter: plan_id"
             )
         
         plan_id = params["plan_id"]
@@ -207,16 +191,14 @@ class PlanningTool(BaseTool):
         if not plan:
             return ToolResult(
                 success=False,
-                message=f"Plan not found: {plan_id}",
-                data=None
+                error=f"Plan not found: {plan_id}"
             )
         
         tasks = self.task_db.get_tasks_for_plan(plan_id)
         
         return ToolResult(
             success=True,
-            message=f"Plan status retrieved",
-            data={
+            result={
                 "plan": plan.to_dict(),
                 "tasks": [t.to_dict() for t in tasks]
             }
