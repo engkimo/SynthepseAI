@@ -162,6 +162,11 @@ class TaskDatabase:
         )
         self.connection.commit()
         return plan.id
+        
+    def create_plan(self, goal: str) -> Plan:
+        """Create a new plan and return the Plan object"""
+        plan_id = self.add_plan(goal)
+        return self.get_plan(plan_id)
 
     def add_task(
         self, description: str, plan_id: str, dependencies: List[str] = None, code: str = None
@@ -200,6 +205,11 @@ class TaskDatabase:
 
         self.connection.commit()
         return task.id
+        
+    def create_task(self, description: str, plan_id: str, dependencies: List[str] = None, code: str = None) -> Task:
+        """Create a new task and return the Task object"""
+        task_id = self.add_task(description, plan_id, dependencies, code)
+        return self.get_task(task_id)
 
     def update_task(
         self, task_id: str, status: TaskStatus = None, result: str = None
