@@ -629,10 +629,43 @@ if __name__ == "__main__":
         return missing, code
 
 def _fix_json_syntax(json_str):
-    """JSONの構文を修正"""
+    """JSONの構文を修正し、一般的なエラーを処理する"""
     json_str = re.sub(r'```json', '', json_str)
     json_str = re.sub(r'```', '', json_str)
     
     json_str = json_str.strip()
     
-    return json_str
+    try:
+        json.loads(json_str)
+        return json_str
+    except json.JSONDecodeError as e:
+        error_msg = str(e)
+        print(f"JSON構文エラーを修正しています: {error_msg}")
+        
+        if "Expecting property name" in error_msg:
+            json_str = re.sub(r'([{,])\s*([a-zA-Z0-9_]+):', r'\1"\2":', json_str)
+        
+        if "Expecting ',' delimiter" in error_msg:
+            json_str = re.sub(r'(["}])\s*(["{])', r'\1,\2', json_str)
+        
+        if "Expecting ':' delimiter" in error_msg:
+            json_str = re.sub(r'(["])\s+(["{[])', r'\1:\2', json_str)
+        
+        if "Expecting value" in error_msg:
+            json_str = re.sub(r':\s*([,}])', r':""\1', json_str)
+        
+        if "Extra data" in error_msg:
+            match = re.search(r'{.*}', json_str, re.DOTALL)
+            if match:
+                json_str = match.group(0)
+        
+        json_str = re.sub(r',\s*}', '}', json_str)
+        json_str = re.sub(r',\s*]', ']', json_str)
+        
+        try:
+            json.loads(json_str)
+            print("JSON構文エラーを修正しました")
+            return json_str
+        except json.JSONDecodeError:
+            print("JSON構文の修正に失敗しました。最小限の有効なJSONを返します")
+            return '{"tasks": []}'
