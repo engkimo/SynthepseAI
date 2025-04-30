@@ -21,8 +21,22 @@ class PlanningTool(BaseTool):
         self.task_db = task_db
         self.python_execute_tool = python_execute_tool
     
-    def execute(self, action, params=None):
-        """アクションを実行"""
+    def execute(self, action=None, params=None, command=None, **kwargs):
+        """アクションを実行
+        
+        Args:
+            action: アクション名（旧パラメータ）
+            params: アクションパラメータ（旧パラメータ）
+            command: アクション名（新パラメータ）
+            **kwargs: その他のパラメータ
+        """
+        if command is not None:
+            action = command
+            params_dict = kwargs.copy()
+            if 'command' in params_dict:
+                del params_dict['command']
+            params = params_dict
+        
         if action == "generate_plan":
             return self._handle_generate_plan(params)
         elif action == "generate_code":
