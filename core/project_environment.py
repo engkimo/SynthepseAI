@@ -110,14 +110,14 @@ class ProjectEnvironment:
                 print("Will continue using system Python")
 
         try:
-            pip_cmd = [self.get_python_path(), "-m", "pip", "install", "black", "flake8", "isort", "mypy"]
+            pip_cmd = [self.get_python_path(), "-m", "pip", "install", "black", "flake8", "isort", "mypy", "setuptools"]
             subprocess.run(
                 pip_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
-            print("Installed code formatters and linters (black, flake8, isort, mypy)")
+            print("Installed code formatters, linters, and setuptools (black, flake8, isort, mypy, setuptools)")
         except Exception as e:
             print(f"Could not install formatters and linters: {str(e)}")
 
