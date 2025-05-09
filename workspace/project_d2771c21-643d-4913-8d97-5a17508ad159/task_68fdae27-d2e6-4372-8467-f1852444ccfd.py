@@ -385,9 +385,9 @@ def prepare_task():
         return time.time()
 
         task_info = {
-            "task_id": "ac89d73a-b231-4cc6-beb0-57c012e31c8b",
-            "description": "Perform exploratory data analysis (EDA) to understand the basic characteristics of the data",
-            "plan_id": "7c969cef-8988-4432-ad6a-6f48698f6ae2",
+            "task_id": "68fdae27-d2e6-4372-8467-f1852444ccfd",
+            "description": "Import necessary libraries for data analysis and visualization.",
+            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
         }
 
         {imports}

@@ -385,9 +385,9 @@ def prepare_task():
         return time.time()
 
         task_info = {
-            "task_id": "5725cd4a-895c-4437-a887-159b4730e493",
-            "description": "Clean and preprocess the data to handle missing values and format the data appropriately",
-            "plan_id": "7c969cef-8988-4432-ad6a-6f48698f6ae2",
+            "task_id": "7f9b5525-de13-49d8-8798-6681a04170ce",
+            "description": "Load the fetched data into a pandas DataFrame.",
+            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
         }
 
         {imports}

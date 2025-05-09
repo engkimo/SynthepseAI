@@ -385,9 +385,9 @@ def prepare_task():
         return time.time()
 
         task_info = {
-            "task_id": "2cba1322-63a2-461b-9a7f-097c43e8a984",
-            "description": "Calculate key metrics such as moving averages and other relevant indicators",
-            "plan_id": "7c969cef-8988-4432-ad6a-6f48698f6ae2",
+            "task_id": "d73da5ec-4f28-4d83-abcd-1627a06bf84a",
+            "description": "Calculate key metrics such as mean, median, and standard deviation for the stock indices.",
+            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
         }
 
         {imports}

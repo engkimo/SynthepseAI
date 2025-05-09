@@ -385,9 +385,9 @@ def prepare_task():
         return time.time()
 
         task_info = {
-            "task_id": "4b15b61c-2387-4334-be82-56bf790724b4",
-            "description": "Visualize the historical stock prices and calculated metrics using line charts and other plots",
-            "plan_id": "7c969cef-8988-4432-ad6a-6f48698f6ae2",
+            "task_id": "b398bb2e-e40c-4bc1-9d6b-7eb7f8f6a321",
+            "description": "Analyze trends and patterns in the data, possibly using moving averages or rolling statistics.",
+            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
         }
 
         {imports}

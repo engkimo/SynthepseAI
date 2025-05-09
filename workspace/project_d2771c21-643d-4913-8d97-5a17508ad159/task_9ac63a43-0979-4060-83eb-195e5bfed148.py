@@ -385,9 +385,9 @@ def prepare_task():
         return time.time()
 
         task_info = {
-            "task_id": "843289b6-1d9b-4fee-928a-ba49341324bf",
-            "description": "Analyze trends and patterns in the data and identify any significant findings",
-            "plan_id": "7c969cef-8988-4432-ad6a-6f48698f6ae2",
+            "task_id": "9ac63a43-0979-4060-83eb-195e5bfed148",
+            "description": "Clean and preprocess the data, handling missing values and ensuring correct data types.",
+            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
         }
 
         {imports}

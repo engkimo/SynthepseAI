@@ -2,6 +2,6 @@
   "エラーパターン: UnboundLocalError": {
     "fact": "タスク実行中に発生: cannot access local variable 'time' where it is not associated with a value",
     "confidence": 0.7,
-    "last_updated": 1746798469.234515
+    "last_updated": 1746800429.131804
   }
 }

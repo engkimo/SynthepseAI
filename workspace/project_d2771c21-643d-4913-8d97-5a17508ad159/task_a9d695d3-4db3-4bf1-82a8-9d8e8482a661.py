@@ -385,9 +385,9 @@ def prepare_task():
         return time.time()
 
         task_info = {
-            "task_id": "cfba5660-e272-46d1-a552-9559d0e295e9",
-            "description": "Handle any potential exceptions and errors throughout the data processing and analysis",
-            "plan_id": "7c969cef-8988-4432-ad6a-6f48698f6ae2",
+            "task_id": "a9d695d3-4db3-4bf1-82a8-9d8e8482a661",
+            "description": "Perform exploratory data analysis (EDA) to understand the data distribution and identify any anomalies.",
+            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
         }
 
         {imports}
