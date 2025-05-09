@@ -250,5 +250,101 @@
     "confidence": 0.85,
     "last_updated": 1744893510.346536,
     "source": "web_search"
+  },
+  "データ分析": {
+    "fact": "株価データを題材にPythonを使用したデータ分析が行われており、データ加工やグラフ化が必須のプロセスである",
+    "confidence": 0.85,
+    "last_updated": 1746765663.2048671,
+    "source": "web_search"
+  },
+  "株価データを取得するためにはpandas_datareaderパッケージを使用する": {
+    "fact": "Pythonで簡単に株価データを取得してPandas DataFrameを作成できる",
+    "confidence": 0.8,
+    "last_updated": 1746765597.63597,
+    "source": "web_search"
+  },
+  "株価データを分析する際にはデータ加工やグラフ化が必須のプロセスである": {
+    "fact": "過去50日間の単純移動平均を計算するなど、データ加工や指標の追加が重要",
+    "confidence": 0.85,
+    "last_updated": 1746765597.636576,
+    "source": "web_search"
+  },
+  "Octoparseを使用すると株価データの取得が容易になる": {
+    "fact": "Octoparseを使用することで株価データ以外のWebサイトのスクレイピングも可能",
+    "confidence": 0.75,
+    "last_updated": 1746765597.637146,
+    "source": "web_search"
+  },
+  "株価データ取得にはpandas_datareaderパッケージを使用することが便利": {
+    "fact": "Pythonでデータ分析を行う際にはpandas_datareaderパッケージを使用すると株価データを簡単に取得し、Pandas DataFrameを作成することができる",
+    "confidence": 0.85,
+    "last_updated": 1746765611.919659,
+    "source": "web_search"
+  },
+  "株価データを使ったデータ分析ではデータ加工やグラフ化が必須のプロセス": {
+    "fact": "株価データを使ったデータ分析を行う際には、データ加工やグラフ化が必須のプロセスである",
+    "confidence": 0.8,
+    "last_updated": 1746765611.920165,
+    "source": "web_search"
+  },
+  "Octoparseを使用すると株価データの取得が簡単に行える": {
+    "fact": "Octoparseを使用すると株価データの取得だけでなく、様々なWebサイトのスクレイピングも可能であるため便利である",
+    "confidence": 0.75,
+    "last_updated": 1746765611.920622,
+    "source": "web_search"
+  },
+  "株価データ取得方法": {
+    "fact": "Pythonのpandas_datareaderパッケージを使用すると簡単に株価データを取得してPandas DataFrameを作成できる",
+    "confidence": 0.8,
+    "last_updated": 1746765620.743653,
+    "source": "web_search"
+  },
+  "移動平均の計算": {
+    "fact": "単純移動平均を計算することが重要であり、過去50日間の移動平均を算出する例が示されている",
+    "confidence": 0.85,
+    "last_updated": 1746765620.744268,
+    "source": "web_search"
+  },
+  "株価データ分析の重要性": {
+    "fact": "株価データを使った分析を通じてデータサイエンスの実践を学ぶことができる",
+    "confidence": 0.75,
+    "last_updated": 1746765620.7448509,
+    "source": "web_search"
+  },
+  "Octoparseの利点": {
+    "fact": "Octoparseを使用すると株価データの取得だけでなく、様々なWebサイトのスクレイピングが可能。カスタマイズ性が高い",
+    "confidence": 0.8,
+    "last_updated": 1746765632.956018,
+    "source": "web_search"
+  },
+  "株価データ取得": {
+    "fact": "Pythonのpandas_datareaderパッケージを使用すると簡単に株価データを取得してPandas DataFrameを作成できる",
+    "confidence": 0.8,
+    "last_updated": 1746765663.204234,
+    "source": "web_search"
+  },
+  "移動平均計算": {
+    "fact": "単純移動平均を計算することができ、過去50日間の移動平均を計算するsma03カラムを作成することが可能",
+    "confidence": 0.75,
+    "last_updated": 1746765632.955393,
+    "source": "web_search"
+  },
+  "株価データの可視化": {
+    "fact": "株価情報をグラフ化して分析することが重要である",
+    "confidence": 0.8,
+    "last_updated": 1746765649.338424,
+    "source": "web_search"
+  },
+  "移動平均": {
+    "fact": "単純移動平均を計算することで株価のトレンドを把握できる",
+    "confidence": 0.75,
+    "last_updated": 1746765663.205378,
+    "source": "web_search"
+  },
+  "Octoparseのメリット": {
+    "fact": "Octoparseを使用すると株価データの取得だけでなく、他のWebサイトのスクレイピングも可能であり、カスタマイズ性が高い",
+    "confidence": 0.8,
+    "last_updated": 1746765663.2058141,
+    "source": "web_search"
   }
 }
