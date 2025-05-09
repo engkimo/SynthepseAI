@@ -461,6 +461,43 @@ def request_multi_agent_discussion(topic):
         print(f"マルチエージェント討論リクエストエラー: {str(e)}")
         return {}
 
+def get_related_knowledge(keywords, limit=5):
+    """
+    キーワードに関連する知識を知識ベースから取得します。
+    
+    Args:
+        keywords (list): 検索キーワードのリスト
+        limit (int): 取得する知識の最大数
+        
+    Returns:
+        list: 関連知識のリスト
+    """
+    try:
+        knowledge_db = load_knowledge_db()
+        related = []
+        
+        for subject, data in knowledge_db.items():
+            for keyword in keywords:
+                if keyword.lower() in subject.lower() or (
+                    data.get("fact") and keyword.lower() in data.get("fact", "").lower()
+                ):
+                    related.append({
+                        "subject": subject,
+                        "fact": data.get("fact"),
+                        "confidence": data.get("confidence", 0),
+                        "last_updated": data.get("last_updated"),
+                        "source": data.get("source")
+                    })
+                    break
+                    
+            if len(related) >= limit:
+                break
+                
+        return related[:limit]
+    except Exception as e:
+        print(f"関連知識取得エラー: {str(e)}")
+        return []
+
 def main():
     global task_description, insights, hypotheses, conclusions, execution_results
     global THINKING_LOG_PATH, KNOWLEDGE_DB_PATH
@@ -475,22 +512,7 @@ def main():
             "timestamp_readable": datetime.datetime.now().isoformat()
         })
         
-        keywords = [word for word in task_description.lower().split() if len(word) > 3]
-        
-        related_knowledge = []
-        try:
-            knowledge_db = load_knowledge_db()
-            for subject, data in knowledge_db.items():
-                for keyword in keywords:
-                    if keyword.lower() in subject.lower() or (data.get("fact") and keyword.lower() in data.get("fact", "").lower()):
-                        related_knowledge.append({
-                            "subject": subject,
-                            "fact": data.get("fact"),
-                            "confidence": data.get("confidence", 0),
-                            "last_updated": data.get("last_updated"),
-                            "source": data.get("source")
-                        })
-                        break
+        related_knowledge = get_related_knowledge([word for word in task_description.lower().split() if len(word) > 3], 3)
                         
             error_patterns = []
             if os.path.exists(THINKING_LOG_PATH):

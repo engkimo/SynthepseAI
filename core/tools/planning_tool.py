@@ -560,6 +560,26 @@ class PlanningTool(BaseTool):
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
         
+        duplicate_import_pattern = r'import\s+datetime\s*\nimport\s+json\s*\nimport\s+os\s*\nimport\s+(?:random|re)\s*\nimport\s+time\s*'
+        main_code_cleaned = re.sub(duplicate_import_pattern, '', main_code_cleaned)
+        
+        duplicate_function_call_pattern = r'related_knowledge\s*=\s*get_related_knowledge\s*\(\s*\[\s*word\s+for\s+word\s+in\s+task_description\.(?:lower\(\)\.)?split\(\)\s+if\s+len\s*\(\s*word\s*\)\s*>\s*3\s*\]\s*(?:,\s*\d+)?\s*\)'
+        main_code_cleaned = re.sub(duplicate_function_call_pattern, '', main_code_cleaned)
+        
+        global_pattern = r'global\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)'
+        
+        def fix_global_declarations(match):
+            globals_str = match.group(1)
+            globals_list = [g.strip() for g in globals_str.split(',')]
+            valid_globals = ['task_description', 'insights', 'hypotheses', 'conclusions', 'execution_results', 
+                            'THINKING_LOG_PATH', 'KNOWLEDGE_DB_PATH']
+            filtered_globals = [g for g in globals_list if g in valid_globals]
+            if filtered_globals:
+                return f"global {', '.join(filtered_globals)}"
+            return ""
+            
+        main_code_cleaned = re.sub(global_pattern, fix_global_declarations, main_code_cleaned)
+        
         task_info_code = f"""task_info = {{
     "task_id": "{task.id}",
     "description": "{task.description}",
