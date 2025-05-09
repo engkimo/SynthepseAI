@@ -513,18 +513,49 @@ class PlanningTool(BaseTool):
         from ..tools.package_manager import PackageManagerTool
         package_manager = PackageManagerTool()
         
-        fixed_imports = []
+        typing_imports = set()
+        standard_imports = []
+        from_imports = {}
+        
         for imp in imports:
             if imp.startswith('import '):
                 module = imp.replace('import ', '').strip()
                 if module in package_manager.python_type_hints:
-                    fixed_imports.append(f"from typing import {module}")
+                    typing_imports.add(module)
                 else:
-                    fixed_imports.append(imp)
+                    standard_imports.append(imp)
+            elif imp.startswith('from typing import '):
+                types = imp.replace('from typing import ', '').strip()
+                for type_hint in re.findall(r'[\w]+', types):
+                    typing_imports.add(type_hint)
+            elif imp.startswith('from '):
+                match = re.match(r'from\s+([\w.]+)\s+import\s+([\w.,\s]+)', imp)
+                if match:
+                    module = match.group(1)
+                    items = [item.strip() for item in match.group(2).split(',')]
+                    
+                    if module not in from_imports:
+                        from_imports[module] = set()
+                    
+                    for item in items:
+                        if item:  # 空文字列でないことを確認
+                            from_imports[module].add(item)
             else:
-                fixed_imports.append(imp)
+                standard_imports.append(imp)
         
-        imports_text = "\n".join(fixed_imports) if fixed_imports else "# No additional imports"
+        import_lines = []
+        
+        if standard_imports:
+            import_lines.extend(standard_imports)
+        
+        if typing_imports:
+            import_lines.append(f"from typing import {', '.join(sorted(typing_imports))}")
+        
+        for module, items in from_imports.items():
+            if module != 'typing':  # typingは既に処理済み
+                import_lines.append(f"from {module} import {', '.join(sorted(items))}")
+        
+        imports_text = "\n".join(import_lines) if import_lines else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
@@ -767,18 +798,49 @@ if __name__ == "__main__":
         from ..tools.package_manager import PackageManagerTool
         package_manager = PackageManagerTool()
         
-        fixed_imports = []
+        typing_imports = set()
+        standard_imports = []
+        from_imports = {}
+        
         for imp in imports:
             if imp.startswith('import '):
                 module = imp.replace('import ', '').strip()
                 if module in package_manager.python_type_hints:
-                    fixed_imports.append(f"from typing import {module}")
+                    typing_imports.add(module)
                 else:
-                    fixed_imports.append(imp)
+                    standard_imports.append(imp)
+            elif imp.startswith('from typing import '):
+                types = imp.replace('from typing import ', '').strip()
+                for type_hint in re.findall(r'[\w]+', types):
+                    typing_imports.add(type_hint)
+            elif imp.startswith('from '):
+                match = re.match(r'from\s+([\w.]+)\s+import\s+([\w.,\s]+)', imp)
+                if match:
+                    module = match.group(1)
+                    items = [item.strip() for item in match.group(2).split(',')]
+                    
+                    if module not in from_imports:
+                        from_imports[module] = set()
+                    
+                    for item in items:
+                        if item:  # 空文字列でないことを確認
+                            from_imports[module].add(item)
             else:
-                fixed_imports.append(imp)
+                standard_imports.append(imp)
         
-        imports_text = "\n".join(fixed_imports) if fixed_imports else "# No additional imports"
+        import_lines = []
+        
+        if standard_imports:
+            import_lines.extend(standard_imports)
+        
+        if typing_imports:
+            import_lines.append(f"from typing import {', '.join(sorted(typing_imports))}")
+        
+        for module, items in from_imports.items():
+            if module != 'typing':  # typingは既に処理済み
+                import_lines.append(f"from {module} import {', '.join(sorted(items))}")
+        
+        imports_text = "\n".join(import_lines) if import_lines else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
