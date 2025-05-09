@@ -98,6 +98,25 @@ class ScriptLinter:
         
         return sum(len(line) + 1 for line in lines[:last_import_line + 1])
     
+    def _is_tool_available(self, tool_name: str) -> bool:
+        """
+        指定されたツールが利用可能かどうかを確認する
+        
+        Args:
+            tool_name: ツール名
+            
+        Returns:
+            ツールが利用可能な場合はTrue、そうでない場合はFalse
+        """
+        try:
+            subprocess.run([tool_name, '--version'], 
+                          stdout=subprocess.PIPE, 
+                          stderr=subprocess.PIPE, 
+                          check=False)
+            return True
+        except FileNotFoundError:
+            return False
+    
     def lint_and_format(self, code: str) -> Tuple[str, List[str]]:
         """
         コードにlintとフォーマットを適用する
@@ -112,25 +131,42 @@ class ScriptLinter:
         
         warnings = []
         
+        isort_available = self._is_tool_available('isort')
+        black_available = self._is_tool_available('black')
+        flake8_available = self._is_tool_available('flake8')
+        mypy_available = self._is_tool_available('mypy')
+        
+        if not any([
+            self.use_isort and isort_available,
+            self.use_black and black_available,
+            self.use_flake8 and flake8_available,
+            self.use_mypy and mypy_available
+        ]):
+            return code, ["外部ツールが利用できないため、基本的なインポート修正のみを適用しました"]
+        
         with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as temp_file:
             temp_path = temp_file.name
             temp_file.write(code.encode('utf-8'))
             temp_file.flush()
             
             try:
-                if self.use_isort:
+                if self.use_isort and isort_available:
                     try:
                         subprocess.run(['isort', temp_path], check=True, capture_output=True)
                     except subprocess.CalledProcessError as e:
                         warnings.append(f"isortエラー: {e.stderr.decode('utf-8')}")
+                elif self.use_isort:
+                    warnings.append("isortが利用できないためスキップしました")
                 
-                if self.use_black:
+                if self.use_black and black_available:
                     try:
                         subprocess.run(['black', temp_path], check=True, capture_output=True)
                     except subprocess.CalledProcessError as e:
                         warnings.append(f"blackエラー: {e.stderr.decode('utf-8')}")
+                elif self.use_black:
+                    warnings.append("blackが利用できないためスキップしました")
                 
-                if self.use_flake8:
+                if self.use_flake8 and flake8_available:
                     try:
                         result = subprocess.run(['flake8', temp_path], capture_output=True)
                         if result.returncode != 0:
@@ -138,8 +174,10 @@ class ScriptLinter:
                             warnings.append(f"flake8警告: {flake8_warnings}")
                     except Exception as e:
                         warnings.append(f"flake8実行エラー: {str(e)}")
+                elif self.use_flake8:
+                    warnings.append("flake8が利用できないためスキップしました")
                 
-                if self.use_mypy:
+                if self.use_mypy and mypy_available:
                     try:
                         result = subprocess.run(['mypy', temp_path], capture_output=True)
                         if result.returncode != 0:
@@ -147,6 +185,8 @@ class ScriptLinter:
                             warnings.append(f"mypy警告: {mypy_warnings}")
                     except Exception as e:
                         warnings.append(f"mypy実行エラー: {str(e)}")
+                elif self.use_mypy:
+                    warnings.append("mypyが利用できないためスキップしました")
                 
                 with open(temp_path, 'r', encoding='utf-8') as f:
                     formatted_code = f.read()
