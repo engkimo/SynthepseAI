@@ -543,6 +543,20 @@ class ProjectEnvironment:
             task_info_match = re.search(task_info_pattern, code)
             task_info_code = task_info_match.group(0) if task_info_match else None
             
+            try:
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from tools.script_linter import ScriptLinter
+                
+                linter = ScriptLinter(use_black=True, use_isort=True, use_flake8=False, use_mypy=False)
+                code, warnings = linter.lint_and_format(code)
+                
+                if warnings:
+                    for warning in warnings:
+                        print(f"Linter warning: {warning}")
+            except ImportError:
+                print("ScriptLinter not available, skipping import fixes")
+            except Exception as e:
+                print(f"Error using ScriptLinter: {str(e)}")
             
             # 一時ファイルにコードを書き込む
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.py', delete=False) as temp_file:
