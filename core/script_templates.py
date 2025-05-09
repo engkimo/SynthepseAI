@@ -622,13 +622,20 @@ def get_template_for_task(task_description, required_libraries=None):
 # 必要なライブラリのインポート
 {imports}
 import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
 
 def main():
     try:
         # メイン処理
 {main_code}
     except Exception as e:
+        error_details = traceback.format_exc()
         print(f"Error: {str(e)}")
+        print(error_details)
         return str(e)
     
     return "Task completed successfully"
