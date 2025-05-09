@@ -3,7 +3,7 @@ import sys
 import os
 import shutil
 import importlib
-import pkg_resources
+import importlib.metadata
 from typing import List, Dict, Any, Tuple, Set
 import re
 import time
@@ -384,8 +384,9 @@ class PackageManagerTool(BaseTool):
     def _handle_list(self, **kwargs) -> ToolResult:
         """インストール済みパッケージの一覧を取得"""
         try:
-            installed_packages = pkg_resources.working_set
-            packages = {pkg.key: pkg.version for pkg in installed_packages}
+            packages = {}
+            for dist in importlib.metadata.distributions():
+                packages[dist.metadata["Name"].lower()] = dist.version
             return ToolResult(True, packages)
         except Exception as e:
             return ToolResult(False, None, f"Error listing packages: {str(e)}")
@@ -488,8 +489,8 @@ class PackageManagerTool(BaseTool):
     def _get_package_version(self, package_name: str) -> str:
         """パッケージのバージョンを取得"""
         try:
-            return pkg_resources.get_distribution(package_name).version
-        except:
+            return importlib.metadata.version(package_name)
+        except importlib.metadata.PackageNotFoundError:
             return "unknown"
 
     def ensure_dependencies(self, code: str) -> Tuple[bool, List[str], List[str]]:
