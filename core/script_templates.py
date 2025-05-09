@@ -462,7 +462,8 @@ def request_multi_agent_discussion(topic):
         return {}
 
 def main():
-    global task_description, insights, hypotheses, conclusions
+    global task_description, insights, hypotheses, conclusions, execution_results
+    global THINKING_LOG_PATH, KNOWLEDGE_DB_PATH
     
     try:
         task_info = globals().get('task_info', {})
@@ -492,9 +493,8 @@ def main():
                         break
                         
             error_patterns = []
-            thinking_log_path = THINKING_LOG_PATH
-            if os.path.exists(thinking_log_path):
-                with open(thinking_log_path, 'r', encoding='utf-8') as f:
+            if os.path.exists(THINKING_LOG_PATH):
+                with open(THINKING_LOG_PATH, 'r', encoding='utf-8') as f:
                     for line in f:
                         try:
                             entry = json.loads(line.strip())
