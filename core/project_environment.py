@@ -109,18 +109,17 @@ class ProjectEnvironment:
                 print(f"Error creating virtual environment: {str(e)}")
                 print("Will continue using system Python")
 
-        # フォーマッター（black）をインストール
         try:
-            pip_cmd = [self.get_python_path(), "-m", "pip", "install", "black"]
+            pip_cmd = [self.get_python_path(), "-m", "pip", "install", "black", "flake8", "isort", "mypy"]
             subprocess.run(
                 pip_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
-            print("Installed black formatter")
+            print("Installed code formatters and linters (black, flake8, isort, mypy)")
         except Exception as e:
-            print(f"Could not install black formatter: {str(e)}")
+            print(f"Could not install formatters and linters: {str(e)}")
 
         # インストール済みパッケージリストの読み込み
         packages_file = os.path.join(self.project_dir, "installed_packages.json")
@@ -536,32 +535,43 @@ class ProjectEnvironment:
         return script_path
 
     def _format_python_code(self, code: str) -> str:
-        """既存のフォーマッターを使用してPythonコードをフォーマット"""
+        """複数のフォーマッターとリンターを使用してPythonコードを整形・修正"""
         try:
             # タスク情報コードとメインコードを分離（タスク情報は保持）
             task_info_pattern = r'task_info\s*=\s*\{[^}]*\}'
             task_info_match = re.search(task_info_pattern, code)
             task_info_code = task_info_match.group(0) if task_info_match else None
             
-            
             # 一時ファイルにコードを書き込む
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.py', delete=False) as temp_file:
                 temp_path = temp_file.name
                 temp_file.write(code)
             
-            # Blackでフォーマット
             try:
-                # blackコマンドを実行
-                result = subprocess.run(
+                isort_result = subprocess.run(
+                    [self.get_python_path(), "-m", "isort", temp_path],
+                    check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True
+                )
+                if isort_result.returncode == 0:
+                    print("Successfully sorted imports with isort")
+                else:
+                    print(f"isort warning: {isort_result.stderr}")
+            except Exception as e:
+                print(f"Error using isort: {str(e)}")
+            
+            # 2. Blackでフォーマット
+            try:
+                black_result = subprocess.run(
                     [self.get_python_path(), "-m", "black", "-q", temp_path],
                     check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     text=True
                 )
                 
-                if result.returncode == 0:
+                if black_result.returncode == 0:
                     print("Successfully formatted code with black")
                 else:
-                    print(f"Black formatter warning: {result.stderr}")
+                    print(f"Black formatter warning: {black_result.stderr}")
                     
                     # Blackが失敗した場合、インデントの基本的な修正を試みる
                     lines = code.splitlines()
@@ -591,6 +601,32 @@ class ProjectEnvironment:
                         f.write('\n'.join(fixed_lines))
             except Exception as e:
                 print(f"Error using black formatter: {str(e)}")
+            
+            try:
+                flake8_result = subprocess.run(
+                    [self.get_python_path(), "-m", "flake8", "--ignore=E501,W503,E203", temp_path],
+                    check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True
+                )
+                if flake8_result.returncode == 0:
+                    print("No linting issues found with flake8")
+                else:
+                    print(f"flake8 linting issues: {flake8_result.stdout}")
+            except Exception as e:
+                print(f"Error using flake8: {str(e)}")
+            
+            try:
+                mypy_result = subprocess.run(
+                    [self.get_python_path(), "-m", "mypy", "--ignore-missing-imports", temp_path],
+                    check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True
+                )
+                if mypy_result.returncode == 0:
+                    print("No type issues found with mypy")
+                else:
+                    print(f"mypy type issues: {mypy_result.stdout}")
+            except Exception as e:
+                print(f"Error using mypy: {str(e)}")
             
             # フォーマットされたコードを読み込む
             with open(temp_path, 'r') as f:

@@ -133,11 +133,19 @@ task_description = ""
 insights = []
 hypotheses = []
 conclusions = []
+execution_results = []
 
 KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
 THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
 
 def load_knowledge_db():
+    """
+    知識データベースを読み込み、タスク実行に必要な知識を取得します。
+    この関数は継続的思考プロセスの一部として、過去の知識を活用するために使用されます。
+    
+    Returns:
+        Dict: 知識データベースの内容
+    """
     try:
         if os.path.exists(KNOWLEDGE_DB_PATH):
             with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
@@ -173,6 +181,20 @@ def log_thought(thought_type, content):
         return False
 
 def update_knowledge(subject, fact, confidence=0.8, source=None):
+    """
+    知識データベースに新しい知識を追加または更新します。
+    この関数は継続的思考プロセスの一部として、タスク実行から得られた知見を
+    知識ベースに統合するために使用されます。
+    
+    Args:
+        subject (str): 知識の主題
+        fact (str): 知識の内容
+        confidence (float): 知識の確信度 (0.0-1.0)
+        source (str, optional): 知識の出所
+        
+    Returns:
+        bool: 更新が成功したかどうか
+    """
     try:
         knowledge_db = load_knowledge_db()
         
@@ -327,6 +349,13 @@ def verify_hypothesis_with_simulation(hypothesis, simulation_code):
     return result
 
 def add_conclusion(conclusion, confidence=0.8):
+    """
+    タスクの結論を追加し、高い確信度の結論は知識ベースに保存します。
+    
+    Args:
+        conclusion (str): 結論の内容
+        confidence (float): 結論の確信度 (0.0-1.0)
+    """
     global conclusions
     conclusions.append({
         "content": conclusion,
@@ -347,6 +376,65 @@ def add_conclusion(conclusion, confidence=0.8):
             confidence,
             "task_conclusion"
         )
+
+def record_execution_result(result_type, content, metadata=None):
+    """
+    スクリプト実行結果を記録し、知識ベースに反映します。
+    この関数は継続的思考プロセスの一部として、スクリプト実行から得られた
+    結果を知識ベースに統合するために使用されます。
+    
+    Args:
+        result_type (str): 結果の種類 (例: "data_analysis", "calculation", "visualization")
+        content (Any): 結果の内容
+        metadata (Dict, optional): 結果に関する追加情報
+    
+    Returns:
+        bool: 記録が成功したかどうか
+    """
+    global execution_results
+    
+    if metadata is None:
+        metadata = {}
+    
+    result = {
+        "type": result_type,
+        "content": str(content),
+        "timestamp": time.time(),
+        "metadata": metadata
+    }
+    
+    execution_results.append(result)
+    
+    log_thought("execution_result", {
+        "task": task_description,
+        "result_type": result_type,
+        "content_summary": str(content)[:100] + "..." if len(str(content)) > 100 else str(content),
+        "metadata": metadata
+    })
+    
+    if result_type == "data_analysis":
+        update_knowledge(
+            f"データ分析結果: {task_description[:30]}...",
+            f"分析結果: {content}",
+            0.9,
+            "execution_result"
+        )
+    elif result_type == "calculation":
+        update_knowledge(
+            f"計算結果: {metadata.get('calculation_name', task_description[:30])}...",
+            f"計算結果: {content}",
+            0.95,
+            "execution_result"
+        )
+    elif result_type == "visualization":
+        update_knowledge(
+            f"可視化結果: {metadata.get('visualization_name', task_description[:30])}...",
+            f"可視化から得られた洞察: {metadata.get('insights', '特に洞察なし')}",
+            0.8,
+            "execution_result"
+        )
+    
+    return True
 
 def request_multi_agent_discussion(topic):
     try:
@@ -509,6 +597,9 @@ def get_template_for_task(task_description, required_libraries=None):
     """
     タスクの説明に基づいて適切なテンプレートを選択
     常にPERSISTENT_THINKING_TEMPLATEを使用し、タスクタイプのみを記録
+    
+    スクリプト生成時に、知識ベースとの双方向同期を強化し、
+    継続的思考プロセスに貢献するテンプレートを提供します。
     
     Args:
         task_description (str): タスクの説明

@@ -284,6 +284,15 @@ class EnhancedPersistentThinkingAI:
         
         self._reflect_and_improve(goal, result)
         
+        integration_results = self.integrate_task_results(goal, result)
+        
+        self._log_thought("task_knowledge_integration", {
+            "goal": goal,
+            "knowledge_updates": len(integration_results.get("knowledge_updates", [])),
+            "thinking_insights": len(integration_results.get("thinking_insights", [])),
+            "hypotheses_verified": len(integration_results.get("hypotheses_verified", []))
+        })
+        
         self._save_knowledge_db()
     
     def _analyze_task_result(self, goal: str, result: str):

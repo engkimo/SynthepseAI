@@ -509,7 +509,22 @@ class PlanningTool(BaseTool):
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-        imports_text = "\n".join(imports) if imports else "# No additional imports"
+        
+        from ..tools.package_manager import PackageManagerTool
+        package_manager = PackageManagerTool()
+        
+        fixed_imports = []
+        for imp in imports:
+            if imp.startswith('import '):
+                module = imp.replace('import ', '').strip()
+                if module in package_manager.python_type_hints:
+                    fixed_imports.append(f"from typing import {module}")
+                else:
+                    fixed_imports.append(imp)
+            else:
+                fixed_imports.append(imp)
+        
+        imports_text = "\n".join(fixed_imports) if fixed_imports else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
@@ -748,7 +763,22 @@ if __name__ == "__main__":
         import re
         import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
         imports = re.findall(import_pattern, main_code)
-        imports_text = "\n".join(imports) if imports else "# No additional imports"
+        
+        from ..tools.package_manager import PackageManagerTool
+        package_manager = PackageManagerTool()
+        
+        fixed_imports = []
+        for imp in imports:
+            if imp.startswith('import '):
+                module = imp.replace('import ', '').strip()
+                if module in package_manager.python_type_hints:
+                    fixed_imports.append(f"from typing import {module}")
+                else:
+                    fixed_imports.append(imp)
+            else:
+                fixed_imports.append(imp)
+        
+        imports_text = "\n".join(fixed_imports) if fixed_imports else "# No additional imports"
         
         # メインコードからインポート文を削除
         main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
