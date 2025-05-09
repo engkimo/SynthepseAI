@@ -595,6 +595,17 @@ def get_template_for_task(task_description, required_libraries=None):
     except Exception as e:
         print(f"テンプレート選択のログ記録に失敗: {str(e)}")
     
+    if required_libraries is None:
+        required_libraries = []
+    
+    if any(lib in ["Dict", "List", "Any", "Optional", "Union", "Tuple"] for lib in required_libraries):
+        for typing_type in ["Dict", "List", "Any", "Optional", "Union", "Tuple"]:
+            if typing_type in required_libraries:
+                required_libraries.remove(typing_type)
+        
+        if "typing" not in required_libraries:
+            required_libraries.append("typing")
+    
     # テンプレート内のプレースホルダーを検証
     template = template.replace("{", "{{").replace("}", "}}")
     
@@ -610,6 +621,7 @@ def get_template_for_task(task_description, required_libraries=None):
         template = """
 # 必要なライブラリのインポート
 {imports}
+import typing  # 型アノテーション用
 
 def main():
     try:
