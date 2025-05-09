@@ -113,7 +113,18 @@ class PythonProjectExecuteTool(BaseTool):
             required_libraries = self._detect_dependencies(task.code)
             imports_str = "\n".join([f"import {lib}" for lib in required_libraries])
             
-            template = get_template_for_task(task.description, required_libraries)
+            recommended_packages = []
+            try:
+                from core.enhanced_persistent_thinking_ai import EnhancedPersistentThinkingAI
+                if 'persistent_thinking' in globals() and isinstance(globals()['persistent_thinking'], EnhancedPersistentThinkingAI):
+                    knowledge = globals()['persistent_thinking'].get_knowledge_for_script(task.description)
+                    if knowledge and "recommended_packages" in knowledge:
+                        recommended_packages = knowledge["recommended_packages"]
+                        print(f"AIが推奨するパッケージ: {', '.join([p['name'] for p in recommended_packages])}")
+            except Exception as e:
+                print(f"パッケージ推奨取得エラー: {str(e)}")
+            
+            template = get_template_for_task(task.description, required_libraries, recommended_packages)
             
             indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
             
@@ -143,13 +154,43 @@ task_info = {{
 }}
 """
             
-            formatted_code = template.format(
+            raw_code = template.format(
                 imports=imports_str,
                 main_code=indented_code,
                 task_id=task.id,
                 description=task.description,
                 plan_id=task.plan_id
             )
+            
+            try:
+                from core.tools.script_linter import ScriptLinter
+                
+                linter = ScriptLinter(use_black=True, use_isort=True, use_flake8=False, use_mypy=False)
+                formatted_code, warnings = linter.lint_and_format(raw_code)
+                
+                if warnings:
+                    for warning in warnings:
+                        print(f"Linter warning during code generation: {warning}")
+            except ImportError:
+                try:
+                    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from tools.script_linter import ScriptLinter
+                    
+                    linter = ScriptLinter(use_black=True, use_isort=True, use_flake8=False, use_mypy=False)
+                    formatted_code, warnings = linter.lint_and_format(raw_code)
+                    
+                    if warnings:
+                        for warning in warnings:
+                            print(f"Linter warning during code generation: {warning}")
+                except ImportError:
+                    print("ScriptLinter not available during code generation, using raw code")
+                    formatted_code = raw_code
+                except Exception as e:
+                    print(f"Error using ScriptLinter during code generation: {str(e)}")
+                    formatted_code = raw_code
+            except Exception as e:
+                print(f"Error using ScriptLinter during code generation: {str(e)}")
+                formatted_code = raw_code
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
             formatted_code = f"""
@@ -270,9 +311,52 @@ if __name__ == "__main__":
             self.task_db.update_task(task_id, TaskStatus.FAILED, str(e))
             return ToolResult(False, None, f"{str(e)}\n{error_details}")
     
+    def _check_package_exists_on_pypi(self, package_name: str) -> bool:
+        """PyPIにパッケージが存在するかチェック"""
+        try:
+            import requests
+            response = requests.get(f"https://pypi.org/pypi/{package_name}/json", timeout=5)
+            return response.status_code == 200
+        except Exception as e:
+            print(f"PyPI確認エラー: {str(e)}")
+            return True
+            
+    def _get_package_alternatives(self, package_name: str) -> List[str]:
+        """存在しないパッケージの代替候補を提案"""
+        # 特殊なマッピング
+        alternatives = {
+            "Yahoo": ["yfinance"],
+            "Pandas": ["pandas"],
+            "Numpy": ["numpy"],
+            "Matplotlib": ["matplotlib"],
+            "Scikit": ["scikit-learn"],
+            "Tensorflow": ["tensorflow"],
+            "Pytorch": ["torch"],
+            "BeautifulSoup": ["beautifulsoup4"],
+            "Requests": ["requests"],
+        }
+        
+        return alternatives.get(package_name, [])
+    
     def _handle_install_package(self, package: str, plan_id: str = None, **kwargs) -> ToolResult:
         """パッケージをインストール"""
         env = self._get_environment(plan_id)
+        
+        if not self._check_package_exists_on_pypi(package):
+            alternatives = self._get_package_alternatives(package)
+            
+            if alternatives:
+                alt_message = f"パッケージ '{package}' はPyPIに存在しません。代わりに {', '.join(alternatives)} を試します。"
+                print(alt_message)
+                
+                # 代替パッケージをインストール
+                for alt in alternatives:
+                    if self._check_package_exists_on_pypi(alt):
+                        success = env.install_package(alt)
+                        if success:
+                            return ToolResult(True, f"代替パッケージ {alt} をインストールしました（元のパッケージ {package} は存在しません）")
+            
+            return ToolResult(False, None, f"パッケージ '{package}' はPyPIに存在せず、適切な代替も見つかりませんでした")
         
         # パッケージをインストール
         success = env.install_package(package)
@@ -314,6 +398,9 @@ if __name__ == "__main__":
             # 特殊なマッピング（bs4 -> beautifulsoup4など）
             if module == "bs4":
                 required_packages.append("beautifulsoup4")
+            elif module == "Yahoo":
+                if "yfinance" not in required_packages:
+                    required_packages.append("yfinance")
             else:
                 required_packages.append(module)
         

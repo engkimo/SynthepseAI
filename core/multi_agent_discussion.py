@@ -9,7 +9,7 @@ from langchain.agents import AgentExecutor, create_react_agent
 from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain.pydantic_v1 import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 from langchain.chat_models.base import BaseChatModel
 
 class DiscussionAgent:
@@ -23,6 +23,7 @@ class DiscussionAgent:
         model_name: str = "gpt-3.5-turbo",
         temperature: float = 0.7,
         api_key: Optional[str] = None,
+        provider: str = "openai",
     ):
         """
         ディスカッションエージェントの初期化
@@ -46,6 +47,11 @@ class DiscussionAgent:
             model_name=model_name,
             temperature=temperature,
             openai_api_key=api_key
+        ) if provider == "openai" else ChatOpenAI(
+            model_name=model_name,
+            temperature=temperature,
+            openai_api_key=api_key,
+            openai_api_base="https://openrouter.ai/api/v1"
         )
         
         self.memory = ConversationBufferMemory(return_messages=True)

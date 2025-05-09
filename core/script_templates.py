@@ -348,6 +348,63 @@ def add_conclusion(conclusion, confidence=0.8):
             "task_conclusion"
         )
 
+def integrate_task_results(task_result, confidence=0.8):
+    """
+    タスク実行結果を知識ベースに統合する
+    
+    Args:
+        task_result: タスク実行の結果
+        confidence: 確信度 (0.0-1.0)
+    """
+    global task_description
+    
+    if not task_result:
+        return False
+        
+    try:
+        knowledge_items = []
+        
+        if isinstance(task_result, dict):
+            for key, value in task_result.items():
+                if isinstance(value, (str, int, float, bool)):
+                    subject = f"{task_description[:30]} - {key}"
+                    fact = str(value)
+                    knowledge_items.append({
+                        "subject": subject,
+                        "fact": fact,
+                        "confidence": confidence
+                    })
+        elif isinstance(task_result, str):
+            lines = task_result.split('\\n')
+            for line in lines:
+                if ':' in line and len(line) > 10:
+                    parts = line.split(':', 1)
+                    subject = f"{task_description[:30]} - {parts[0].strip()}"
+                    fact = parts[1].strip()
+                    knowledge_items.append({
+                        "subject": subject,
+                        "fact": fact,
+                        "confidence": confidence
+                    })
+        
+        for item in knowledge_items:
+            update_knowledge(
+                item["subject"],
+                item["fact"],
+                item["confidence"],
+                "task_result_integration"
+            )
+            
+        log_thought("task_result_integration", {
+            "task": task_description,
+            "extracted_knowledge_count": len(knowledge_items)
+        })
+        
+        return True
+    except Exception as e:
+        print(f"タスク結果統合エラー: {str(e)}")
+        return False
+
 def request_multi_agent_discussion(topic):
     try:
         log_thought("multi_agent_discussion_request", {
@@ -364,7 +421,7 @@ def request_multi_agent_discussion(topic):
         print(f"マルチエージェント討論リクエストエラー: {str(e)}")
         return {}
 
-def main():
+def prepare_task():
     global task_description, insights, hypotheses, conclusions
     
     try:
@@ -409,7 +466,23 @@ def main():
             
             request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
         
+        return task_start_time
+    except Exception as e:
+        print(f"タスク準備エラー: {str(e)}")
+        return time.time()
+
 {main_code}
+
+def main():
+    global task_description, insights, hypotheses, conclusions
+    
+    try:
+        task_start_time = prepare_task()
+        
+        task_result = run_task() if 'run_task' in globals() else None
+        
+        if task_result:
+            integrate_task_results(task_result)
         
         log_thought("task_execution_complete", {
             "task": task_description,
@@ -419,7 +492,7 @@ def main():
             "conclusions_count": len(conclusions)
         })
         
-        return result if 'result' in locals() else "Task completed successfully"
+        return task_result if task_result is not None else "Task completed successfully"
         
     except ImportError as e:
         missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
@@ -466,7 +539,7 @@ if __name__ == "__main__":
     result = main()
 '''
 
-def get_template_for_task(task_description, required_libraries=None):
+def get_template_for_task(task_description, required_libraries=None, recommended_packages=None):
     """
     タスクの説明に基づいて適切なテンプレートを選択
     常にPERSISTENT_THINKING_TEMPLATEを使用し、タスクタイプのみを記録
@@ -474,6 +547,7 @@ def get_template_for_task(task_description, required_libraries=None):
     Args:
         task_description (str): タスクの説明
         required_libraries (list, optional): 必要なライブラリのリスト
+        recommended_packages (list, optional): AIが推奨するパッケージのリスト
         
     Returns:
         str: 適切なテンプレート
@@ -531,12 +605,47 @@ def get_template_for_task(task_description, required_libraries=None):
                         "task_description": task_description,
                         "selected_template_type": task_type,
                         "template": "PERSISTENT_THINKING_TEMPLATE",
-                        "required_libraries": required_libraries
+                        "required_libraries": required_libraries,
+                        "recommended_packages": recommended_packages
                     }
                 }
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
     except Exception as e:
         print(f"テンプレート選択のログ記録に失敗: {str(e)}")
+    
+    if required_libraries is None:
+        required_libraries = []
+    
+    stock_data_keywords = [
+        '株価', '株式', 'stock', 'finance', '金融', 'yfinance', 'yahoo', '日経',
+        'nikkei', '証券', 'investment', '投資', 'market', 'マーケット'
+    ]
+    
+    if recommended_packages:
+        for package in recommended_packages:
+            package_name = package.get("name", "")
+            if package_name and package_name not in required_libraries:
+                required_libraries.append(package_name)
+                print(f"Adding recommended package: {package_name} (confidence: {package.get('confidence', 0)})")
+    
+    if task_type == "data_analysis" and "pandas" not in required_libraries:
+        required_libraries.append("pandas")
+    if task_type == "data_analysis" and "matplotlib" not in required_libraries:
+        required_libraries.append("matplotlib")
+    if task_type == "web_scraping" and "requests" not in required_libraries:
+        required_libraries.append("requests")
+    if task_type == "web_scraping" and "beautifulsoup4" not in required_libraries:
+        required_libraries.append("beautifulsoup4")
+    if any(keyword in task_lower for keyword in stock_data_keywords) and "yfinance" not in required_libraries:
+        required_libraries.append("yfinance")
+    
+    if any(lib in ["Dict", "List", "Any", "Optional", "Union", "Tuple"] for lib in required_libraries):
+        for typing_type in ["Dict", "List", "Any", "Optional", "Union", "Tuple"]:
+            if typing_type in required_libraries:
+                required_libraries.remove(typing_type)
+        
+        if "typing" not in required_libraries:
+            required_libraries.append("typing")
     
     # テンプレート内のプレースホルダーを検証
     template = template.replace("{", "{{").replace("}", "}}")
@@ -553,13 +662,21 @@ def get_template_for_task(task_description, required_libraries=None):
         template = """
 # 必要なライブラリのインポート
 {imports}
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
 
 def main():
     try:
         # メイン処理
 {main_code}
     except Exception as e:
+        error_details = traceback.format_exc()
         print(f"Error: {str(e)}")
+        print(error_details)
         return str(e)
     
     return "Task completed successfully"
