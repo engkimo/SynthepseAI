@@ -529,6 +529,20 @@ class PlanningTool(BaseTool):
         
         try:
             # 安全なフォーマット処理
+            indented_main_code = "    " + main_code_cleaned.replace("\n", "\n    ")
+            run_task_function = f"""
+def run_task():
+    \"\"\"
+    Execute the task and return the result
+    \"\"\"
+{indented_main_code}
+    return result
+"""
+            format_dict = {
+                "imports": imports_text,
+                "main_code": run_task_function,
+            }
+            
             from string import Template
             t = Template(template)
             full_code = task_info_code + t.safe_substitute(format_dict)
@@ -540,16 +554,21 @@ class PlanningTool(BaseTool):
 # 必要なライブラリのインポート
 {imports}
 
+def run_task():
+    \"\"\"
+    Execute the task and return the result
+    \"\"\"
+    {main_code}
+    return result
+
 def main():
     try:
-        # メイン処理
-        {main_code}
+        task_result = run_task()
+        return task_result
     except Exception as e:
         print(f"Error: {{str(e)}}")
         return str(e)
     
-    return "Task completed successfully"
-
 # スクリプト実行
 if __name__ == "__main__":
     result = main()
@@ -761,6 +780,20 @@ if __name__ == "__main__":
         
         try:
             # 安全なフォーマット処理
+            indented_main_code = "    " + main_code_cleaned.replace("\n", "\n    ")
+            run_task_function = f"""
+def run_task():
+    \"\"\"
+    Execute the task and return the result
+    \"\"\"
+{indented_main_code}
+    return result
+"""
+            format_dict = {
+                "imports": imports_text,
+                "main_code": run_task_function,
+            }
+            
             from string import Template
             t = Template(template)
             full_code = task_info_code + t.safe_substitute(format_dict)
@@ -772,16 +805,21 @@ if __name__ == "__main__":
 # 必要なライブラリのインポート
 {imports}
 
+def run_task():
+    \"\"\"
+    Execute the task and return the result
+    \"\"\"
+    {main_code}
+    return result
+
 def main():
     try:
-        # メイン処理
-        {main_code}
+        task_result = run_task()
+        return task_result
     except Exception as e:
         print(f"Error: {{str(e)}}")
         return str(e)
     
-    return "Task completed successfully"
-
 # スクリプト実行
 if __name__ == "__main__":
     result = main()
