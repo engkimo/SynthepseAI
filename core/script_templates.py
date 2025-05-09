@@ -421,7 +421,7 @@ def request_multi_agent_discussion(topic):
         print(f"マルチエージェント討論リクエストエラー: {str(e)}")
         return {}
 
-def main():
+def prepare_task():
     global task_description, insights, hypotheses, conclusions
     
     try:
@@ -466,7 +466,23 @@ def main():
             
             request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
         
+        return task_start_time
+    except Exception as e:
+        print(f"タスク準備エラー: {str(e)}")
+        return time.time()
+
 {main_code}
+
+def main():
+    global task_description, insights, hypotheses, conclusions
+    
+    try:
+        task_start_time = prepare_task()
+        
+        task_result = run_task() if 'run_task' in globals() else None
+        
+        if task_result:
+            integrate_task_results(task_result)
         
         log_thought("task_execution_complete", {
             "task": task_description,
@@ -476,7 +492,7 @@ def main():
             "conclusions_count": len(conclusions)
         })
         
-        return result if 'result' in locals() else "Task completed successfully"
+        return task_result if task_result is not None else "Task completed successfully"
         
     except ImportError as e:
         missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
