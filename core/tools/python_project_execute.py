@@ -143,13 +143,43 @@ task_info = {{
 }}
 """
             
-            formatted_code = template.format(
+            raw_code = template.format(
                 imports=imports_str,
                 main_code=indented_code,
                 task_id=task.id,
                 description=task.description,
                 plan_id=task.plan_id
             )
+            
+            try:
+                from core.tools.script_linter import ScriptLinter
+                
+                linter = ScriptLinter(use_black=True, use_isort=True, use_flake8=False, use_mypy=False)
+                formatted_code, warnings = linter.lint_and_format(raw_code)
+                
+                if warnings:
+                    for warning in warnings:
+                        print(f"Linter warning during code generation: {warning}")
+            except ImportError:
+                try:
+                    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    from tools.script_linter import ScriptLinter
+                    
+                    linter = ScriptLinter(use_black=True, use_isort=True, use_flake8=False, use_mypy=False)
+                    formatted_code, warnings = linter.lint_and_format(raw_code)
+                    
+                    if warnings:
+                        for warning in warnings:
+                            print(f"Linter warning during code generation: {warning}")
+                except ImportError:
+                    print("ScriptLinter not available during code generation, using raw code")
+                    formatted_code = raw_code
+                except Exception as e:
+                    print(f"Error using ScriptLinter during code generation: {str(e)}")
+                    formatted_code = raw_code
+            except Exception as e:
+                print(f"Error using ScriptLinter during code generation: {str(e)}")
+                formatted_code = raw_code
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
             formatted_code = f"""
