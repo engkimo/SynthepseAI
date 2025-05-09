@@ -37,38 +37,50 @@ class ScriptLinter:
         Returns:
             修正後のコード
         """
-        direct_import_pattern = r'import\s+(Dict|List|Any|Optional|Union|Tuple)(?:\s*,\s*(Dict|List|Any|Optional|Union|Tuple))*'
+        lines = code.split('\n')
+        modified_lines = []
+        typing_types = set()
         
-        direct_imports = re.findall(direct_import_pattern, code)
+        direct_import_pattern = re.compile(r'^import\s+(Dict|List|Any|Optional|Union|Tuple)(?:\s*,\s*(Dict|List|Any|Optional|Union|Tuple))*\s*$')
         
-        if direct_imports:
-            typing_types = set()
-            for imports in direct_imports:
-                if isinstance(imports, tuple):
-                    typing_types.update(imports)
-                else:
-                    typing_types.add(imports)
+        typing_import_pattern = re.compile(r'^from\s+typing\s+import\s+(.+)$')
+        
+        has_typing_import = False
+        
+        for line in lines:
+            if direct_import_pattern.match(line):
+                matches = re.findall(r'(Dict|List|Any|Optional|Union|Tuple)', line)
+                for match in matches:
+                    typing_types.add(match)
+                continue
             
-            for match in re.finditer(direct_import_pattern, code):
-                code = code.replace(match.group(0), '')
+            typing_match = typing_import_pattern.match(line)
+            if typing_match:
+                has_typing_import = True
+                existing_types = re.findall(r'(\w+)', typing_match.group(1))
+                for t in existing_types:
+                    typing_types.add(t)
+                continue
             
-            if typing_types:
-                typing_import = f"from typing import {', '.join(sorted(typing_types))}"
-                
-                existing_typing_import = re.search(r'from\s+typing\s+import\s+([^;\n]+)', code)
-                if existing_typing_import:
-                    existing_types = set(re.findall(r'(\w+)', existing_typing_import.group(1)))
-                    existing_types.update(typing_types)
-                    new_typing_import = f"from typing import {', '.join(sorted(existing_types))}"
-                    code = code.replace(existing_typing_import.group(0), new_typing_import)
-                else:
-                    import_section_end = self._find_import_section_end(code)
-                    if import_section_end > 0:
-                        code = code[:import_section_end] + "\n" + typing_import + code[import_section_end:]
-                    else:
-                        code = typing_import + "\n" + code
+            modified_lines.append(line)
         
-        return code
+        if typing_types:
+            typing_import = f"from typing import {', '.join(sorted(typing_types))}"
+            
+            # インポートセクションの終わりを見つける
+            import_section_end = 0
+            for i, line in enumerate(modified_lines):
+                if re.match(r'^(import\s+|from\s+\w+\s+import\s+)', line):
+                    import_section_end = i + 1
+            
+            # インポートセクションの終わりにtypingインポートを追加
+            if import_section_end > 0:
+                modified_lines.insert(import_section_end, typing_import)
+            else:
+                # インポートセクションが見つからない場合は先頭に追加
+                modified_lines.insert(0, typing_import)
+        
+        return '\n'.join(modified_lines)
     
     def _find_import_section_end(self, code: str) -> int:
         """
