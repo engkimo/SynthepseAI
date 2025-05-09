@@ -348,6 +348,63 @@ def add_conclusion(conclusion, confidence=0.8):
             "task_conclusion"
         )
 
+def integrate_task_results(task_result, confidence=0.8):
+    """
+    タスク実行結果を知識ベースに統合する
+    
+    Args:
+        task_result: タスク実行の結果
+        confidence: 確信度 (0.0-1.0)
+    """
+    global task_description
+    
+    if not task_result:
+        return False
+        
+    try:
+        knowledge_items = []
+        
+        if isinstance(task_result, dict):
+            for key, value in task_result.items():
+                if isinstance(value, (str, int, float, bool)):
+                    subject = f"{task_description[:30]} - {key}"
+                    fact = str(value)
+                    knowledge_items.append({
+                        "subject": subject,
+                        "fact": fact,
+                        "confidence": confidence
+                    })
+        elif isinstance(task_result, str):
+            lines = task_result.split('\\n')
+            for line in lines:
+                if ':' in line and len(line) > 10:
+                    parts = line.split(':', 1)
+                    subject = f"{task_description[:30]} - {parts[0].strip()}"
+                    fact = parts[1].strip()
+                    knowledge_items.append({
+                        "subject": subject,
+                        "fact": fact,
+                        "confidence": confidence
+                    })
+        
+        for item in knowledge_items:
+            update_knowledge(
+                item["subject"],
+                item["fact"],
+                item["confidence"],
+                "task_result_integration"
+            )
+            
+        log_thought("task_result_integration", {
+            "task": task_description,
+            "extracted_knowledge_count": len(knowledge_items)
+        })
+        
+        return True
+    except Exception as e:
+        print(f"タスク結果統合エラー: {str(e)}")
+        return False
+
 def request_multi_agent_discussion(topic):
     try:
         log_thought("multi_agent_discussion_request", {

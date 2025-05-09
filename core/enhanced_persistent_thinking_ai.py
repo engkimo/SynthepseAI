@@ -304,6 +304,8 @@ class EnhancedPersistentThinkingAI:
             "result": result,
             "analysis": analysis
         })
+        
+        self.integrate_task_results(goal, result)
     
     def _extract_and_store_knowledge(self, goal: str, result: str):
         """新しい知識を抽出して保存"""
@@ -781,7 +783,8 @@ class EnhancedPersistentThinkingAI:
             "task": task_description,
             "related_knowledge": [],
             "thinking_insights": [],
-            "hypotheses": []
+            "hypotheses": [],
+            "multi_agent_insights": []
         }
         
         if not keywords:
@@ -796,12 +799,23 @@ class EnhancedPersistentThinkingAI:
                         "subject": subject,
                         "fact": data.get("fact", ""),
                         "confidence": data.get("confidence", 0.0),
-                        "last_updated": data.get("last_updated", 0)
+                        "last_updated": data.get("last_updated", 0),
+                        "source": data.get("source", "unknown")
                     })
                     break
         
         related_insights = self._get_related_insights(task_description, limit=5)
         result["thinking_insights"] = related_insights
+        
+        for insight in related_insights:
+            if insight.get("type") == "task_hypothesis":
+                content = insight.get("content", {})
+                if isinstance(content, dict) and "hypothesis" in content:
+                    result["hypotheses"].append({
+                        "content": content["hypothesis"],
+                        "confidence": content.get("confidence", 0.6),
+                        "timestamp": insight.get("timestamp", 0)
+                    })
         
         if self.enable_multi_agent and self.multi_agent_discussion:
             try:
@@ -809,13 +823,44 @@ class EnhancedPersistentThinkingAI:
                     topic=f"「{task_description}」に関する仮説と解決アプローチ",
                     rounds=2
                 )
-                if discussion_result and "consensus" in discussion_result:
-                    result["multi_agent_insights"] = discussion_result["consensus"]
+                
+                if discussion_result:
+                    if "consensus" in discussion_result:
+                        result["multi_agent_insights"].append({
+                            "type": "consensus",
+                            "content": discussion_result["consensus"],
+                            "confidence": 0.85
+                        })
+                    
+                    if "responses" in discussion_result:
+                        for agent_name, response in discussion_result["responses"].items():
+                            result["multi_agent_insights"].append({
+                                "type": "agent_perspective",
+                                "agent": agent_name,
+                                "content": response,
+                                "confidence": 0.75
+                            })
+                    
+                    if "consensus" in discussion_result:
+                        self._update_knowledge(
+                            f"マルチエージェント討論: {task_description[:30]}",
+                            discussion_result["consensus"],
+                            0.85,
+                            "multi_agent_discussion"
+                        )
             except Exception as e:
                 self._log_thought("multi_agent_discussion_error", {
                     "task": task_description,
                     "error": str(e)
                 })
+        
+        self._log_thought("knowledge_for_script", {
+            "task": task_description,
+            "knowledge_count": len(result["related_knowledge"]),
+            "insights_count": len(result["thinking_insights"]),
+            "hypotheses_count": len(result["hypotheses"]),
+            "multi_agent_insights_count": len(result["multi_agent_insights"])
+        })
         
         return result
     
@@ -824,6 +869,67 @@ class EnhancedPersistentThinkingAI:
         import re
         words = re.findall(r'\b\w+\b', text.lower())
         return [w for w in words if len(w) > 3]
+    
+    def integrate_task_results(self, goal: str, result: str) -> bool:
+        """
+        タスク実行結果を知識ベースに統合する
+        
+        Args:
+            goal: タスクの目標
+            result: タスク実行の結果
+            
+        Returns:
+            bool: 統合が成功したかどうか
+        """
+        if not result:
+            return False
+            
+        try:
+            knowledge_items = []
+            
+            if isinstance(result, dict):
+                for key, value in result.items():
+                    if isinstance(value, (str, int, float, bool)):
+                        subject = f"{goal[:30]} - {key}"
+                        fact = str(value)
+                        knowledge_items.append({
+                            "subject": subject,
+                            "fact": fact,
+                            "confidence": 0.8
+                        })
+            elif isinstance(result, str):
+                lines = result.split('\n')
+                for line in lines:
+                    if ':' in line and len(line) > 10:
+                        parts = line.split(':', 1)
+                        subject = f"{goal[:30]} - {parts[0].strip()}"
+                        fact = parts[1].strip()
+                        knowledge_items.append({
+                            "subject": subject,
+                            "fact": fact,
+                            "confidence": 0.8
+                        })
+            
+            for item in knowledge_items:
+                self._update_knowledge(
+                    item["subject"],
+                    item["fact"],
+                    item["confidence"],
+                    "task_result_integration"
+                )
+                
+            self._log_thought("task_result_integration", {
+                "goal": goal,
+                "extracted_knowledge_count": len(knowledge_items)
+            })
+            
+            return True
+        except Exception as e:
+            self._log_thought("task_result_integration_error", {
+                "goal": goal,
+                "error": str(e)
+            })
+            return False
     
     def _get_related_insights(self, text: str, limit: int = 5) -> List[Dict]:
         """関連する洞察を取得"""
@@ -882,7 +988,7 @@ class EnhancedPersistentThinkingAI:
         
         self._save_knowledge_db()
         
-        if hasattr(self, 'knowledge_graph') and self.knowledge_graph is not None:
+        if hasattr(self, '_knowledge_graph') and getattr(self, '_knowledge_graph', None) is not None:
             try:
                 self._update_knowledge_graph(subject, fact)
             except Exception as e:
