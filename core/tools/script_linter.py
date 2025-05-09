@@ -45,7 +45,10 @@ class ScriptLinter:
         
         typing_import_pattern = re.compile(r'^from\s+typing\s+import\s+(.+)$')
         
+        yahoo_import_pattern = re.compile(r'^import\s+Yahoo\s*$')
+        
         has_typing_import = False
+        has_yfinance_import = False
         
         for line in lines:
             if direct_import_pattern.match(line):
@@ -62,6 +65,15 @@ class ScriptLinter:
                     typing_types.add(t)
                 continue
             
+            if yahoo_import_pattern.match(line):
+                if not any(re.match(r'^import\s+yfinance', l) for l in lines):
+                    modified_lines.append("import yfinance")
+                    has_yfinance_import = True
+                continue
+            
+            if re.match(r'^import\s+yfinance', line) and has_yfinance_import:
+                continue
+                
             modified_lines.append(line)
         
         if typing_types:

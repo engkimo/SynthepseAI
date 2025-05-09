@@ -539,7 +539,7 @@ if __name__ == "__main__":
     result = main()
 '''
 
-def get_template_for_task(task_description, required_libraries=None):
+def get_template_for_task(task_description, required_libraries=None, recommended_packages=None):
     """
     タスクの説明に基づいて適切なテンプレートを選択
     常にPERSISTENT_THINKING_TEMPLATEを使用し、タスクタイプのみを記録
@@ -547,6 +547,7 @@ def get_template_for_task(task_description, required_libraries=None):
     Args:
         task_description (str): タスクの説明
         required_libraries (list, optional): 必要なライブラリのリスト
+        recommended_packages (list, optional): AIが推奨するパッケージのリスト
         
     Returns:
         str: 適切なテンプレート
@@ -604,7 +605,8 @@ def get_template_for_task(task_description, required_libraries=None):
                         "task_description": task_description,
                         "selected_template_type": task_type,
                         "template": "PERSISTENT_THINKING_TEMPLATE",
-                        "required_libraries": required_libraries
+                        "required_libraries": required_libraries,
+                        "recommended_packages": recommended_packages
                     }
                 }
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
@@ -613,6 +615,29 @@ def get_template_for_task(task_description, required_libraries=None):
     
     if required_libraries is None:
         required_libraries = []
+    
+    stock_data_keywords = [
+        '株価', '株式', 'stock', 'finance', '金融', 'yfinance', 'yahoo', '日経',
+        'nikkei', '証券', 'investment', '投資', 'market', 'マーケット'
+    ]
+    
+    if recommended_packages:
+        for package in recommended_packages:
+            package_name = package.get("name", "")
+            if package_name and package_name not in required_libraries:
+                required_libraries.append(package_name)
+                print(f"Adding recommended package: {package_name} (confidence: {package.get('confidence', 0)})")
+    
+    if task_type == "data_analysis" and "pandas" not in required_libraries:
+        required_libraries.append("pandas")
+    if task_type == "data_analysis" and "matplotlib" not in required_libraries:
+        required_libraries.append("matplotlib")
+    if task_type == "web_scraping" and "requests" not in required_libraries:
+        required_libraries.append("requests")
+    if task_type == "web_scraping" and "beautifulsoup4" not in required_libraries:
+        required_libraries.append("beautifulsoup4")
+    if any(keyword in task_lower for keyword in stock_data_keywords) and "yfinance" not in required_libraries:
+        required_libraries.append("yfinance")
     
     if any(lib in ["Dict", "List", "Any", "Optional", "Union", "Tuple"] for lib in required_libraries):
         for typing_type in ["Dict", "List", "Any", "Optional", "Union", "Tuple"]:

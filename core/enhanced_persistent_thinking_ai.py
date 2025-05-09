@@ -768,6 +768,238 @@ class EnhancedPersistentThinkingAI:
         
         self.thinking_state["last_thought_time"] = time.time()
     
+    def _suggest_packages_for_task(self, task_description: str) -> List[Dict[str, Any]]:
+        """
+        タスクの説明に基づいて適切なPythonパッケージを提案する
+        
+        Args:
+            task_description: タスクの説明
+            
+        Returns:
+            List[Dict]: 推奨パッケージのリスト（名前、説明、用途、信頼度を含む）
+        """
+        task_categories = {
+            "データ分析": {
+                "pandas": {
+                    "description": "データ操作と分析のための高性能ライブラリ",
+                    "confidence": 0.95,
+                    "usage": "データフレーム操作、統計分析、データクリーニング"
+                },
+                "numpy": {
+                    "description": "数値計算のための基本ライブラリ",
+                    "confidence": 0.9,
+                    "usage": "配列操作、数学関数、線形代数"
+                },
+                "scipy": {
+                    "description": "科学技術計算のためのライブラリ",
+                    "confidence": 0.8,
+                    "usage": "高度な統計、最適化、信号処理"
+                }
+            },
+            "データ可視化": {
+                "matplotlib": {
+                    "description": "静的でインタラクティブな可視化を作成するライブラリ",
+                    "confidence": 0.9,
+                    "usage": "グラフ、チャート、ヒストグラム作成"
+                },
+                "seaborn": {
+                    "description": "統計データ可視化のための高レベルインターフェース",
+                    "confidence": 0.85,
+                    "usage": "複雑な統計プロット、ヒートマップ、ペアプロット"
+                },
+                "plotly": {
+                    "description": "インタラクティブな可視化ライブラリ",
+                    "confidence": 0.8,
+                    "usage": "インタラクティブグラフ、ダッシュボード"
+                }
+            },
+            "機械学習": {
+                "scikit-learn": {
+                    "description": "機械学習アルゴリズムとツールのコレクション",
+                    "confidence": 0.9,
+                    "usage": "分類、回帰、クラスタリング、次元削減"
+                },
+                "tensorflow": {
+                    "description": "深層学習フレームワーク",
+                    "confidence": 0.85,
+                    "usage": "ニューラルネットワーク、深層学習モデル"
+                },
+                "pytorch": {
+                    "description": "柔軟な深層学習フレームワーク",
+                    "confidence": 0.85,
+                    "usage": "研究向け深層学習、動的計算グラフ"
+                }
+            },
+            "ウェブスクレイピング": {
+                "requests": {
+                    "description": "HTTPリクエストを簡単に行うためのライブラリ",
+                    "confidence": 0.9,
+                    "usage": "APIリクエスト、ウェブページ取得"
+                },
+                "beautifulsoup4": {
+                    "description": "HTMLとXMLの解析ライブラリ",
+                    "confidence": 0.9,
+                    "usage": "ウェブページからのデータ抽出"
+                },
+                "selenium": {
+                    "description": "ブラウザ自動化ライブラリ",
+                    "confidence": 0.8,
+                    "usage": "動的ウェブページのスクレイピング"
+                }
+            },
+            "自然言語処理": {
+                "nltk": {
+                    "description": "自然言語処理ツールキット",
+                    "confidence": 0.85,
+                    "usage": "テキスト処理、トークン化、ステミング"
+                },
+                "spacy": {
+                    "description": "高度な自然言語処理ライブラリ",
+                    "confidence": 0.85,
+                    "usage": "品詞タグ付け、固有表現認識、依存構文解析"
+                },
+                "transformers": {
+                    "description": "最先端の自然言語処理モデル",
+                    "confidence": 0.8,
+                    "usage": "BERT、GPT、T5などの事前学習済みモデル"
+                }
+            },
+            "株価データ": {
+                "yfinance": {
+                    "description": "Yahoo Financeからの株価データ取得ライブラリ",
+                    "confidence": 0.9,
+                    "usage": "株価履歴データ、企業情報の取得"
+                },
+                "pandas-datareader": {
+                    "description": "様々なソースからの金融データ取得ライブラリ",
+                    "confidence": 0.85,
+                    "usage": "株価、為替レート、経済指標の取得"
+                },
+                "alpha-vantage": {
+                    "description": "Alpha Vantage APIのPythonラッパー",
+                    "confidence": 0.8,
+                    "usage": "リアルタイム株価、テクニカル指標"
+                }
+            }
+        }
+        
+        keywords = self._extract_keywords_from_text(task_description)
+        
+        category_scores = {}
+        for category in task_categories:
+            score = 0
+            for keyword in keywords:
+                if keyword.lower() in category.lower():
+                    score += 3  # カテゴリ名に直接マッチする場合は高いスコア
+                
+                for package, details in task_categories[category].items():
+                    if keyword.lower() in details["description"].lower() or keyword.lower() in details["usage"].lower():
+                        score += 1
+            
+            if score > 0:
+                category_scores[category] = score
+        
+        special_keywords = {
+            "株価": ["株価データ", "データ分析", "データ可視化"],
+            "グラフ": ["データ可視化", "データ分析"],
+            "チャート": ["データ可視化"],
+            "予測": ["機械学習", "データ分析"],
+            "分類": ["機械学習"],
+            "テキスト": ["自然言語処理"],
+            "言語": ["自然言語処理"],
+            "ウェブ": ["ウェブスクレイピング"],
+            "スクレイピング": ["ウェブスクレイピング"],
+            "クローリング": ["ウェブスクレイピング"]
+        }
+        
+        for keyword in keywords:
+            for special_keyword, categories in special_keywords.items():
+                if special_keyword in keyword.lower():
+                    for category in categories:
+                        category_scores[category] = category_scores.get(category, 0) + 2
+        
+        japanese_keywords = {
+            "株": ["株価データ", "データ分析"],
+            "日経": ["株価データ"],
+            "証券": ["株価データ"],
+            "金融": ["株価データ"],
+            "分析": ["データ分析"],
+            "可視化": ["データ可視化"],
+            "機械学習": ["機械学習"],
+            "自然言語": ["自然言語処理"],
+            "ウェブ": ["ウェブスクレイピング"]
+        }
+        
+        for keyword in keywords:
+            for jp_keyword, categories in japanese_keywords.items():
+                if jp_keyword in keyword.lower():
+                    for category in categories:
+                        category_scores[category] = category_scores.get(category, 0) + 3
+        
+        sorted_categories = sorted(category_scores.items(), key=lambda x: x[1], reverse=True)
+        
+        recommended_packages = []
+        added_packages = set()
+        
+        for category, score in sorted_categories[:3]:
+            if category in task_categories:
+                sorted_packages = sorted(
+                    task_categories[category].items(),
+                    key=lambda x: x[1]["confidence"],
+                    reverse=True
+                )
+                
+                for package_name, details in sorted_packages[:2]:
+                    if package_name not in added_packages:
+                        recommended_packages.append({
+                            "name": package_name,
+                            "description": details["description"],
+                            "usage": details["usage"],
+                            "confidence": details["confidence"] * (score / 10 if score > 10 else 1)  # スコアに基づいて信頼度を調整
+                        })
+                        added_packages.add(package_name)
+        
+        if "株価" in task_description.lower() or "日経" in task_description.lower():
+            if "yfinance" not in added_packages:
+                recommended_packages.append({
+                    "name": "yfinance",
+                    "description": "Yahoo Financeからの株価データ取得ライブラリ",
+                    "usage": "株価履歴データ、企業情報の取得",
+                    "confidence": 0.95
+                })
+                added_packages.add("yfinance")
+        
+        if "pandas" not in added_packages and len(recommended_packages) > 0:
+            recommended_packages.append({
+                "name": "pandas",
+                "description": "データ操作と分析のための高性能ライブラリ",
+                "usage": "データフレーム操作、統計分析、データクリーニング",
+                "confidence": 0.9
+            })
+        
+        verified_packages = []
+        for package in recommended_packages:
+            try:
+                import requests
+                response = requests.get(f"https://pypi.org/pypi/{package['name']}/json", timeout=5)
+                if response.status_code == 200:
+                    package_info = response.json()
+                    if "info" in package_info:
+                        package["pypi_description"] = package_info["info"].get("summary", "")
+                        package["pypi_version"] = package_info["info"].get("version", "")
+                    verified_packages.append(package)
+                    self._log_thought("package_verification_success", {
+                        "package": package["name"],
+                        "exists_on_pypi": True
+                    })
+            except Exception as e:
+                self._log_thought("package_verification_error", {
+                    "package": package["name"],
+                    "error": str(e)
+                })
+        
+        return verified_packages
+    
     def get_knowledge_for_script(self, task_description: str, keywords: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         スクリプト生成用の知識を提供
@@ -784,11 +1016,21 @@ class EnhancedPersistentThinkingAI:
             "related_knowledge": [],
             "thinking_insights": [],
             "hypotheses": [],
-            "multi_agent_insights": []
+            "multi_agent_insights": [],
+            "recommended_packages": []
         }
         
         if not keywords:
             keywords = self._extract_keywords_from_text(task_description)
+        
+        recommended_packages = self._suggest_packages_for_task(task_description)
+        result["recommended_packages"] = recommended_packages
+        
+        self._log_thought("package_recommendations", {
+            "task": task_description,
+            "recommended_packages": [p["name"] for p in recommended_packages],
+            "package_count": len(recommended_packages)
+        })
         
         for subject, data in self.knowledge_db.items():
             for keyword in keywords:
@@ -859,7 +1101,8 @@ class EnhancedPersistentThinkingAI:
             "knowledge_count": len(result["related_knowledge"]),
             "insights_count": len(result["thinking_insights"]),
             "hypotheses_count": len(result["hypotheses"]),
-            "multi_agent_insights_count": len(result["multi_agent_insights"])
+            "multi_agent_insights_count": len(result["multi_agent_insights"]),
+            "recommended_packages_count": len(result["recommended_packages"])
         })
         
         return result
