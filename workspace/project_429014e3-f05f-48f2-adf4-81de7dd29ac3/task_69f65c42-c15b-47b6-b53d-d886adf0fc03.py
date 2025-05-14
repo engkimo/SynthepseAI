@@ -23,7 +23,7 @@ def load_knowledge_db():
                 return json.load(f)
         return {}
     except Exception as e:
-        print(f"知識データベース読み込みエラー: {str(e)}")
+        print(f"知識データベース読み込みエラー: {{str(e)}}")
         return {}
 
 
@@ -34,7 +34,7 @@ def save_knowledge_db(knowledge_db):
             json.dump(knowledge_db, fp=f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
-        print(f"知識データベース保存エラー: {str(e)}")
+        print(f"知識データベース保存エラー: {{str(e)}}")
         return False
 
 
@@ -46,7 +46,7 @@ def log_thought(thought_type, content):
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
         return True
     except Exception as e:
-        print(f"思考ログ記録エラー: {str(e)}")
+        print(f"思考ログ記録エラー: {{str(e)}}")
         return False
 
 
@@ -98,7 +98,7 @@ def update_knowledge(subject, fact, confidence=0.8, source=None):
 
         return save_success
     except Exception as e:
-        print(f"知識更新エラー: {str(e)}")
+        print(f"知識更新エラー: {{str(e)}}")
         return False
 
 
@@ -300,7 +300,7 @@ def integrate_task_results(task_result, confidence=0.8):
 
         return True
     except Exception as e:
-        print(f"タスク結果統合エラー: {str(e)}")
+        print(f"タスク結果統合エラー: {{str(e)}}")
         return False
 
 
@@ -312,7 +312,7 @@ def request_multi_agent_discussion(topic):
 
         return {"topic": topic, "requested": True, "timestamp": time.time()}
     except Exception as e:
-        print(f"マルチエージェント討論リクエストエラー: {str(e)}")
+        print(f"マルチエージェント討論リクエストエラー: {{str(e)}}")
         return {}
 
 
@@ -353,7 +353,7 @@ def prepare_task():
                         )
                         break
         except Exception as e:
-            print(f"関連知識取得エラー: {str(e)}")
+            print(f"関連知識取得エラー: {{str(e)}}")
 
         if related_knowledge:
             print(
@@ -381,13 +381,13 @@ def prepare_task():
 
         return task_start_time
     except Exception as e:
-        print(f"タスク準備エラー: {str(e)}")
+        print(f"タスク準備エラー: {{str(e)}}")
         return time.time()
 
         task_info = {
-            "task_id": "b398bb2e-e40c-4bc1-9d6b-7eb7f8f6a321",
-            "description": "Analyze trends and patterns in the data, possibly using moving averages or rolling statistics.",
-            "plan_id": "d2771c21-643d-4913-8d97-5a17508ad159",
+            "task_id": "69f65c42-c15b-47b6-b53d-d886adf0fc03",
+            "description": "Import all necessary libraries for data analysis and visualization.",
+            "plan_id": "429014e3-f05f-48f2-adf4-81de7dd29ac3",
         }
 
         {imports}
@@ -412,10 +412,10 @@ def prepare_task():
                 if os.path.exists(KNOWLEDGE_DB_PATH):
                     with open(KNOWLEDGE_DB_PATH, "r", encoding="utf-8") as f:
                         return json.load(f)
-                return {{}}
+                return {}
             except Exception as e:
                 print(f"知識データベース読み込みエラー: {{str(e)}}")
-                return {{}}
+                return {}
 
         def save_knowledge_db(knowledge_db):
             try:
@@ -431,7 +431,9 @@ def prepare_task():
             try:
                 os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
                 log_entry = {
-                    {"timestamp": time.time(), "type": thought_type, "content": content}
+                    "timestamp": time.time(),
+                    "type": thought_type,
+                    "content": content,
                 }
                 with open(THINKING_LOG_PATH, "a", encoding="utf-8") as f:
                     f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
@@ -445,7 +447,7 @@ def prepare_task():
                 knowledge_db = load_knowledge_db()
 
                 if subject not in knowledge_db:
-                    knowledge_db[subject] = {{}}
+                    knowledge_db[subject] = {}
                     original_fact = None
                 else:
                     original_fact = knowledge_db[subject].get("fact")
@@ -455,14 +457,12 @@ def prepare_task():
                     log_thought(
                         "knowledge_update_rejected",
                         {
-                            {
-                                "subject": subject,
-                                "existing_fact": original_fact,
-                                "new_fact": fact,
-                                "existing_confidence": existing_confidence,
-                                "new_confidence": confidence,
-                                "reason": "新しい情報の確信度が既存の情報より低いため更新を拒否",
-                            }
+                            "subject": subject,
+                            "existing_fact": original_fact,
+                            "new_fact": fact,
+                            "existing_confidence": existing_confidence,
+                            "new_confidence": confidence,
+                            "reason": "新しい情報の確信度が既存の情報より低いため更新を拒否",
                         },
                     )
                     return False
@@ -479,14 +479,12 @@ def prepare_task():
                 log_thought(
                     "knowledge_update",
                     {
-                        {
-                            "subject": subject,
-                            "original_fact": original_fact,
-                            "new_fact": fact,
-                            "confidence": confidence,
-                            "source": source,
-                            "success": save_success,
-                        }
+                        "subject": subject,
+                        "original_fact": original_fact,
+                        "new_fact": fact,
+                        "confidence": confidence,
+                        "source": source,
+                        "success": save_success,
                     },
                 )
 
@@ -498,23 +496,15 @@ def prepare_task():
         def add_insight(insight, confidence=0.7):
             global insights
             insights.append(
-                {
-                    {
-                        "content": insight,
-                        "confidence": confidence,
-                        "timestamp": time.time(),
-                    }
-                }
+                {"content": insight, "confidence": confidence, "timestamp": time.time()}
             )
 
             log_thought(
                 "task_insight",
                 {
-                    {
-                        "task": task_description,
-                        "insight": insight,
-                        "confidence": confidence,
-                    }
+                    "task": task_description,
+                    "insight": insight,
+                    "confidence": confidence,
                 },
             )
 
@@ -522,23 +512,19 @@ def prepare_task():
             global hypotheses
             hypotheses.append(
                 {
-                    {
-                        "content": hypothesis,
-                        "confidence": confidence,
-                        "timestamp": time.time(),
-                        "verified": False,
-                    }
+                    "content": hypothesis,
+                    "confidence": confidence,
+                    "timestamp": time.time(),
+                    "verified": False,
                 }
             )
 
             log_thought(
                 "task_hypothesis",
                 {
-                    {
-                        "task": task_description,
-                        "hypothesis": hypothesis,
-                        "confidence": confidence,
-                    }
+                    "task": task_description,
+                    "hypothesis": hypothesis,
+                    "confidence": confidence,
                 },
             )
 
@@ -556,20 +542,18 @@ def prepare_task():
             log_thought(
                 "hypothesis_verification",
                 {
-                    {
-                        "task": task_description,
-                        "hypothesis": hypothesis,
-                        "verified": verified,
-                        "evidence": evidence,
-                        "confidence": confidence,
-                    }
+                    "task": task_description,
+                    "hypothesis": hypothesis,
+                    "verified": verified,
+                    "evidence": evidence,
+                    "confidence": confidence,
                 },
             )
 
             if verified and confidence > 0.7:
                 update_knowledge(
-                    f"検証済み仮説: {{hypothesis[:50]}}...",
-                    f"検証結果: {{evidence}}",
+                    f"検証済み仮説: {hypothesis[:50]}...",
+                    f"検証結果: {evidence}",
                     confidence,
                     "hypothesis_verification",
                 )
@@ -578,18 +562,16 @@ def prepare_task():
             global task_description
 
             result = {
-                {
-                    "hypothesis": hypothesis,
-                    "verified": False,
-                    "confidence": 0.0,
-                    "evidence": [],
-                    "timestamp": time.time(),
-                }
+                "hypothesis": hypothesis,
+                "verified": False,
+                "confidence": 0.0,
+                "evidence": [],
+                "timestamp": time.time(),
             }
 
             try:
-                local_vars = {{}}
-                exec(simulation_code, {{"__builtins__": __builtins__}}, local_vars)
+                local_vars = {}
+                exec(simulation_code, {"__builtins__": __builtins__}, local_vars)
 
                 simulation_result = local_vars.get("result", None)
 
@@ -602,19 +584,17 @@ def prepare_task():
                     log_thought(
                         "hypothesis_simulation",
                         {
-                            {
-                                "task": task_description,
-                                "hypothesis": hypothesis,
-                                "verified": result["verified"],
-                                "confidence": result["confidence"],
-                                "evidence": result["evidence"],
-                            }
+                            "task": task_description,
+                            "hypothesis": hypothesis,
+                            "verified": result["verified"],
+                            "confidence": result["confidence"],
+                            "evidence": result["evidence"],
                         },
                     )
 
                     if result["verified"] and result["confidence"] > 0.7:
-                        subject = f"検証済み仮説: {{hypothesis[:50]}}..."
-                        fact = f"検証結果: {{result['simulation_result']}}"
+                        subject = f"検証済み仮説: {hypothesis[:50]}..."
+                        fact = f"検証結果: {result['simulation_result']}"
                         update_knowledge(
                             subject, fact, result["confidence"], "hypothesis_simulation"
                         )
@@ -622,11 +602,9 @@ def prepare_task():
                     log_thought(
                         "hypothesis_simulation_warning",
                         {
-                            {
-                                "task": task_description,
-                                "hypothesis": hypothesis,
-                                "warning": "シミュレーション結果が取得できませんでした",
-                            }
+                            "task": task_description,
+                            "hypothesis": hypothesis,
+                            "warning": "シミュレーション結果が取得できませんでした",
                         },
                     )
             except Exception as e:
@@ -635,12 +613,10 @@ def prepare_task():
                 log_thought(
                     "hypothesis_simulation_error",
                     {
-                        {
-                            "task": task_description,
-                            "hypothesis": hypothesis,
-                            "error": str(e),
-                            "traceback": traceback.format_exc(),
-                        }
+                        "task": task_description,
+                        "hypothesis": hypothesis,
+                        "error": str(e),
+                        "traceback": traceback.format_exc(),
                     },
                 )
 
@@ -650,28 +626,24 @@ def prepare_task():
             global conclusions
             conclusions.append(
                 {
-                    {
-                        "content": conclusion,
-                        "confidence": confidence,
-                        "timestamp": time.time(),
-                    }
+                    "content": conclusion,
+                    "confidence": confidence,
+                    "timestamp": time.time(),
                 }
             )
 
             log_thought(
                 "task_conclusion",
                 {
-                    {
-                        "task": task_description,
-                        "conclusion": conclusion,
-                        "confidence": confidence,
-                    }
+                    "task": task_description,
+                    "conclusion": conclusion,
+                    "confidence": confidence,
                 },
             )
 
             if confidence > 0.7:
                 update_knowledge(
-                    f"タスク結論: {{task_description[:50]}}...",
+                    f"タスク結論: {task_description[:50]}...",
                     conclusion,
                     confidence,
                     "task_conclusion",
@@ -696,15 +668,13 @@ def prepare_task():
                 if isinstance(task_result, dict):
                     for key, value in task_result.items():
                         if isinstance(value, (str, int, float, bool)):
-                            subject = f"{{task_description[:30]}} - {{key}}"
+                            subject = f"{task_description[:30]} - {key}"
                             fact = str(value)
                             knowledge_items.append(
                                 {
-                                    {
-                                        "subject": subject,
-                                        "fact": fact,
-                                        "confidence": confidence,
-                                    }
+                                    "subject": subject,
+                                    "fact": fact,
+                                    "confidence": confidence,
                                 }
                             )
                 elif isinstance(task_result, str):
@@ -712,17 +682,13 @@ def prepare_task():
                     for line in lines:
                         if ":" in line and len(line) > 10:
                             parts = line.split(":", 1)
-                            subject = (
-                                f"{{task_description[:30]}} - {{parts[0].strip()}}"
-                            )
+                            subject = f"{task_description[:30]} - {parts[0].strip()}"
                             fact = parts[1].strip()
                             knowledge_items.append(
                                 {
-                                    {
-                                        "subject": subject,
-                                        "fact": fact,
-                                        "confidence": confidence,
-                                    }
+                                    "subject": subject,
+                                    "fact": fact,
+                                    "confidence": confidence,
                                 }
                             )
 
@@ -737,10 +703,8 @@ def prepare_task():
                 log_thought(
                     "task_result_integration",
                     {
-                        {
-                            "task": task_description,
-                            "extracted_knowledge_count": len(knowledge_items),
-                        }
+                        "task": task_description,
+                        "extracted_knowledge_count": len(knowledge_items),
                     },
                 )
 
@@ -753,29 +717,27 @@ def prepare_task():
             try:
                 log_thought(
                     "multi_agent_discussion_request",
-                    {{"topic": topic, "timestamp": time.time()}},
+                    {"topic": topic, "timestamp": time.time()},
                 )
 
-                return {{"topic": topic, "requested": True, "timestamp": time.time()}}
+                return {"topic": topic, "requested": True, "timestamp": time.time()}
             except Exception as e:
                 print(f"マルチエージェント討論リクエストエラー: {{str(e)}}")
-                return {{}}
+                return {}
 
         def prepare_task():
             global task_description, insights, hypotheses, conclusions
 
             try:
-                task_info = globals().get("task_info", {{}})
+                task_info = globals().get("task_info", {})
                 task_description = task_info.get("description", "Unknown task")
                 task_start_time = time.time()
 
                 log_thought(
                     "task_execution_start",
                     {
-                        {
-                            "task": task_description,
-                            "timestamp_readable": datetime.datetime.now().isoformat(),
-                        }
+                        "task": task_description,
+                        "timestamp_readable": datetime.datetime.now().isoformat(),
                     },
                 )
 
@@ -793,13 +755,11 @@ def prepare_task():
                             ):
                                 related_knowledge.append(
                                     {
-                                        {
-                                            "subject": subject,
-                                            "fact": data.get("fact"),
-                                            "confidence": data.get("confidence", 0),
-                                            "last_updated": data.get("last_updated"),
-                                            "source": data.get("source"),
-                                        }
+                                        "subject": subject,
+                                        "fact": data.get("fact"),
+                                        "confidence": data.get("confidence", 0),
+                                        "last_updated": data.get("last_updated"),
+                                        "source": data.get("source"),
                                     }
                                 )
                                 break
@@ -808,26 +768,26 @@ def prepare_task():
 
                 if related_knowledge:
                     print(
-                        f"タスク '{{task_description}}' に関連する既存知識が {{len(related_knowledge)}} 件見つかりました:"
+                        f"タスク '{task_description}' に関連する既存知識が {len(related_knowledge)} 件見つかりました:"
                     )
                     for i, knowledge in enumerate(related_knowledge):
                         print(
-                            f"  {{i+1}}. {{knowledge['subject']}}: {{knowledge['fact']}} (確信度: {{knowledge['confidence']:.2f}})"
+                            f"  {i+1}. {knowledge['subject']}: {knowledge['fact']} (確信度: {knowledge['confidence']:.2f})"
                         )
 
                     if len(related_knowledge) >= 2:
-                        hypothesis = f"タスク '{{task_description}}' は {{related_knowledge[0]['subject']}} と {{related_knowledge[1]['subject']}} に関連している可能性がある"
+                        hypothesis = f"タスク '{task_description}' は {related_knowledge[0]['subject']} と {related_knowledge[1]['subject']} に関連している可能性がある"
                         add_hypothesis(hypothesis, confidence=0.6)
                 else:
                     print(
-                        f"タスク '{{task_description}}' に関連する既存知識は見つかりませんでした。"
+                        f"タスク '{task_description}' に関連する既存知識は見つかりませんでした。"
                     )
                     add_insight(
                         "このタスクに関連する既存知識がないため、新しい知識の獲得が必要"
                     )
 
                     request_multi_agent_discussion(
-                        f"「{{task_description}}」に関する基礎知識と仮説"
+                        f"「{task_description}」に関する基礎知識と仮説"
                     )
 
                 return task_start_time
@@ -851,13 +811,11 @@ def prepare_task():
                 log_thought(
                     "task_execution_complete",
                     {
-                        {
-                            "task": task_description,
-                            "execution_time": time.time() - task_start_time,
-                            "insights_count": len(insights),
-                            "hypotheses_count": len(hypotheses),
-                            "conclusions_count": len(conclusions),
-                        }
+                        "task": task_description,
+                        "execution_time": time.time() - task_start_time,
+                        "insights_count": len(insights),
+                        "hypotheses_count": len(hypotheses),
+                        "conclusions_count": len(conclusions),
                     },
                 )
 
@@ -869,21 +827,19 @@ def prepare_task():
 
             except ImportError as e:
                 missing_module = str(e).split("'")[1] if "'" in str(e) else str(e)
-                error_msg = f"エラー: 必要なモジュール '{{missing_module}}' がインストールされていません。"
+                error_msg = f"エラー: 必要なモジュール '{missing_module}' がインストールされていません。"
                 print(error_msg)
                 print(
-                    f"次のコマンドでインストールしてください: pip install {{missing_module}}"
+                    f"次のコマンドでインストールしてください: pip install {missing_module}"
                 )
 
                 try:
                     log_thought(
                         "task_execution_error",
                         {
-                            {
-                                "task": task_description,
-                                "error_type": "ImportError",
-                                "error_message": error_msg,
-                            }
+                            "task": task_description,
+                            "error_type": "ImportError",
+                            "error_message": error_msg,
                         },
                     )
                 except:
@@ -901,17 +857,15 @@ def prepare_task():
                     log_thought(
                         "task_execution_error",
                         {
-                            {
-                                "task": task_description,
-                                "error_type": type(e).__name__,
-                                "error_message": str(e),
-                                "traceback": error_details,
-                            }
+                            "task": task_description,
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                            "traceback": error_details,
                         },
                     )
 
                     update_knowledge(
-                        f"エラーパターン: {{type(e).__name__}}",
+                        f"エラーパターン: {type(e).__name__}",
                         f"タスク実行中に発生: {{str(e)}}",
                         confidence=0.7,
                     )
@@ -970,7 +924,7 @@ def main():
 
     except Exception as e:
         error_details = traceback.format_exc()
-        error_msg = f"エラー: {str(e)}"
+        error_msg = f"エラー: {{str(e)}}"
         print(error_msg)
         print(error_details)
 
@@ -987,7 +941,7 @@ def main():
 
             update_knowledge(
                 f"エラーパターン: {type(e).__name__}",
-                f"タスク実行中に発生: {str(e)}",
+                f"タスク実行中に発生: {{str(e)}}",
                 confidence=0.7,
             )
         except:
