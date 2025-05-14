@@ -156,17 +156,45 @@ task_info = {{
             
             safe_template = template.replace("{str(e)}", "___STR_E___")
             
-            format_dict = {
-                "imports": imports_str,
-                "main_code": indented_code,
-                "task_id": task.id,
-                "description": task.description,
-                "plan_id": task.plan_id
-            }
+            import re
+            positional_fields = re.findall(r'\{(\d+)\}', safe_template)
+            for field in positional_fields:
+                safe_template = safe_template.replace(f"{{{field}}}", f"___POS_{field}___")
             
-            raw_code = safe_template.format_map(format_dict)
-            
-            raw_code = raw_code.replace("___STR_E___", "{str(e)}")
+            try:
+                raw_code = safe_template.replace("{imports}", imports_str)
+                raw_code = raw_code.replace("{main_code}", indented_code)
+                raw_code = raw_code.replace("{task_id}", task.id)
+                raw_code = raw_code.replace("{description}", task.description)
+                raw_code = raw_code.replace("{plan_id}", task.plan_id if task.plan_id else "")
+                
+                for field in positional_fields:
+                    raw_code = raw_code.replace(f"___POS_{field}___", f"{{{field}}}")
+                
+                raw_code = raw_code.replace("___STR_E___", "{str(e)}")
+            except Exception as e:
+                print(f"テンプレート処理エラー: {str(e)}")
+                raw_code = f"""
+{imports_str}
+
+def run_task():
+    \"\"\"
+    Execute the task and return the result
+    \"\"\"
+    {indented_code}
+    return result
+
+def main():
+    try:
+        task_result = run_task()
+        return task_result
+    except Exception as e:
+        print(f"Error: {{str(e)}}")
+        return str(e)
+    
+if __name__ == "__main__":
+    result = main()
+"""
             
             try:
                 from core.tools.script_linter import ScriptLinter
