@@ -1,6 +1,6 @@
 {
   "エラーパターン: UnboundLocalError": {
-    "fact": "タスク実行中に発生: {str(e)}",
+    "fact": "タスク実行中に発生: Error message placeholder",
     "confidence": 0.7,
     "last_updated": 1747194908.6258402
   }
