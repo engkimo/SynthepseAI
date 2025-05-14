@@ -154,7 +154,20 @@ task_info = {{
 }}
 """
             
-            raw_code = template.format(
+            from string import Template
+            safe_template = template.replace("$", "$$")
+            safe_template = safe_template.replace("{imports}", "${imports}")
+            safe_template = safe_template.replace("{main_code}", "${main_code}")
+            
+            safe_template = safe_template.replace("{task_id}", "${task_id}")
+            safe_template = safe_template.replace("{description}", "${description}")
+            safe_template = safe_template.replace("{plan_id}", "${plan_id}")
+            
+            safe_template = re.sub(r'(?<!\{)(\{)(?!\{)', '{{', safe_template)
+            safe_template = re.sub(r'(?<!\})(\})(?!\})', '}}', safe_template)
+            
+            t = Template(safe_template)
+            raw_code = t.substitute(
                 imports=imports_str,
                 main_code=indented_code,
                 task_id=task.id,
