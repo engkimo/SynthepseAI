@@ -128,20 +128,51 @@ class PythonProjectExecuteTool(BaseTool):
             
             indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
             
+            if "result" not in task.code and not any(line.strip().startswith("return ") for line in task.code.split("\n")):
+                if task.description.lower().startswith(("calculate", "compute", "find", "analyze")):
+                    indented_code += "\n        return result"
+            
             if "{imports}" not in template or "{main_code}" not in template:
                 print("Warning: Template missing required placeholders. Using basic template.")
                 template = """
 {imports}
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
+
+task_info = {{
+    "task_id": "{task_id}",
+    "description": "{description}",
+    "plan_id": "{plan_id}"
+}}
+
+def run_task():
+    \"\"\"
+    タスクを実行して結果を返す関数
+    \"\"\"
+    try:
+        result = None
+{main_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        print(f"Error: {{{{str(e)}}}}")
+        return {{"error": str(e), "traceback": traceback.format_exc()}}
 
 def main():
     try:
-{main_code}
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
+        return task_result
     except Exception as e:
         print(f"Error: {{{{str(e)}}}}")
         return str(e)
     
-    return "Task completed successfully"
-
 if __name__ == "__main__":
     result = main()
 """
@@ -176,17 +207,38 @@ task_info = {{
                 print(f"テンプレート処理エラー: {str(e)}")
                 raw_code = f"""
 {imports_str}
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
+
+task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id if task.plan_id else ""}"
+}}
 
 def run_task():
     \"\"\"
-    Execute the task and return the result
+    タスクを実行して結果を返す関数
     \"\"\"
-    {indented_code}
-    return result
+    try:
+        result = None
+{indented_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        print(f"タスク実行エラー: {{str(e)}}")
+        return {{"error": str(e), "traceback": traceback.format_exc()}}
 
 def main():
     try:
+        print("タスクを実行中...")
         task_result = run_task()
+        print("タスク実行完了")
         return task_result
     except Exception as e:
         print(f"Error: {{str(e)}}")
@@ -229,16 +281,43 @@ if __name__ == "__main__":
             print(f"Template formatting error: {str(e)}. Using basic template.")
             formatted_code = f"""
 {imports_str}
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
+
+task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id if task.plan_id else ""}"
+}}
+
+def run_task():
+    \"\"\"
+    タスクを実行して結果を返す関数
+    \"\"\"
+    try:
+        result = None
+{indented_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        print(f"タスク実行エラー: {{{{str(e)}}}}")
+        return {{"error": str(e), "traceback": traceback.format_exc()}}
 
 def main():
     try:
-{indented_code}
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
+        return task_result
     except Exception as e:
         print(f"Error: {{{{str(e)}}}}")
         return str(e)
     
-    return "Task completed successfully"
-
 if __name__ == "__main__":
     result = main()
 """

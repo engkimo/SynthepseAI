@@ -120,6 +120,7 @@ result = main()
 """
 
 PERSISTENT_THINKING_TEMPLATE = r'''
+# 必要なライブラリのインポート
 {imports}
 import os
 import json
@@ -129,7 +130,13 @@ import datetime
 import traceback
 from typing import Dict, List, Any, Optional, Union, Tuple
 
-task_description = ""
+task_info = {
+    "task_id": "{task_id}",
+    "description": "{description}",
+    "plan_id": "{plan_id}"
+}
+
+task_description = task_info.get("description", "Unknown task")
 insights = []
 hypotheses = []
 conclusions = []
@@ -471,18 +478,53 @@ def prepare_task():
         print(f"タスク準備エラー: {str(e)}")
         return time.time()
 
+def run_task():
+    """
+    タスクを実行して結果を返す関数
+    この関数は継続的思考AIで得られた知見を活用し、結果を知識ベースに統合する
+    
+    Returns:
+        Any: タスク実行結果（辞書形式が望ましい）
+    """
+    try:
+        result = None
 {main_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"タスク実行エラー: {str(e)}")
+        print(error_details)
+        return {
+            "status": "error",
+            "error": str(e),
+            "traceback": error_details
+        }
 
 def main():
+    """
+    メイン実行関数
+    タスクの準備、実行、結果の統合を行う
+    """
     global task_description, insights, hypotheses, conclusions
     
     try:
         task_start_time = prepare_task()
         
-        task_result = run_task() if 'run_task' in globals() else None
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
         
-        if task_result:
-            integrate_task_results(task_result)
+        if task_result is not None:
+            print("タスク結果を知識ベースに統合中...")
+            integrate_success = integrate_task_results(task_result)
+            if integrate_success:
+                print("知識ベースへの統合に成功しました")
+            else:
+                print("知識ベースへの統合に失敗しました")
+        else:
+            print("タスク結果がないため知識ベースに統合しません")
         
         log_thought("task_execution_complete", {
             "task": task_description,
@@ -669,18 +711,40 @@ import os  # ファイル操作用
 import json  # JSON処理用
 import datetime  # 日付処理用
 
-def main():
+task_info = {{
+    "task_id": "{task_id}",
+    "description": "{description}",
+    "plan_id": "{plan_id}"
+}}
+
+def run_task():
+    """
+    タスクを実行して結果を返す関数
+    """
     try:
-        # メイン処理
+        result = None
 {main_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
     except Exception as e:
         error_details = traceback.format_exc()
-        print(f"Error: {str(e)}")
+        print(f"Error: {{str(e)}}")
+        print(error_details)
+        return {{"error": str(e), "traceback": error_details}}
+
+def main():
+    try:
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
+        return task_result
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"Error: {{str(e)}}")
         print(error_details)
         return str(e)
     
-    return "Task completed successfully"
-
 # スクリプト実行
 if __name__ == "__main__":
     result = main()
