@@ -1,3 +1,10 @@
+task_info = {
+    "task_id": "e39d66e9-e531-4467-ab77-3ab75ce9485b",
+    "description": "Import necessary libraries for data analysis and visualization.",
+    "plan_id": "1846ce19-b929-4aad-8171-6330b0f4c209"
+}
+
+# 必要なライブラリのインポート
 import typing
 import os
 import json
@@ -7,7 +14,13 @@ import datetime
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-task_description = ""
+task_info = {
+    "task_id": "e39d66e9-e531-4467-ab77-3ab75ce9485b",
+    "description": "Import necessary libraries for data analysis and visualization.",
+    "plan_id": "1846ce19-b929-4aad-8171-6330b0f4c209",
+}
+
+task_description = task_info.get("description", "Unknown task")
 insights = []
 hypotheses = []
 conclusions = []
@@ -384,13 +397,25 @@ def prepare_task():
         print(f"タスク準備エラー: {{str(e)}}")
         return time.time()
 
+
+def run_task():
+    """
+    タスクを実行して結果を返す関数
+    この関数は継続的思考AIで得られた知見を活用し、結果を知識ベースに統合する
+
+    Returns:
+        Any: タスク実行結果（辞書形式が望ましい）
+    """
+    try:
+        result = None
         task_info = {
-            "task_id": "3d026a3a-9103-4d52-b781-cca80e7e7f03",
-            "description": "Perform basic statistical analysis on the stock price data, such as calculating mean, median, and standard deviation.",
-            "plan_id": "d62f9d7f-a7d1-40ca-b26b-51464e44fda8",
+            "task_id": "e39d66e9-e531-4467-ab77-3ab75ce9485b",
+            "description": "Import necessary libraries for data analysis and visualization.",
+            "plan_id": "1846ce19-b929-4aad-8171-6330b0f4c209",
         }
 
-        {imports}
+        # 必要なライブラリのインポート
+        imports = """
         import os
         import json
         import time
@@ -398,8 +423,17 @@ def prepare_task():
         import datetime
         import traceback
         from typing import Dict, List, Any, Optional, Union, Tuple
+        """
 
-        task_description = ""
+        exec(imports)
+
+        task_info = {
+            "task_id": "e39d66e9-e531-4467-ab77-3ab75ce9485b",
+            "description": "Import necessary libraries for data analysis and visualization.",
+            "plan_id": "1846ce19-b929-4aad-8171-6330b0f4c209",
+        }
+
+        task_description = task_info.get("description", "Unknown task")
         insights = []
         hypotheses = []
         conclusions = []
@@ -414,7 +448,7 @@ def prepare_task():
                         return json.load(f)
                 return {}
             except Exception as e:
-                print(f"知識データベース読み込みエラー: {{str(e)}}")
+                print(f"知識データベース読み込みエラー: {str(e)}")
                 return {}
 
         def save_knowledge_db(knowledge_db):
@@ -424,7 +458,7 @@ def prepare_task():
                     json.dump(knowledge_db, fp=f, ensure_ascii=False, indent=2)
                 return True
             except Exception as e:
-                print(f"知識データベース保存エラー: {{str(e)}}")
+                print(f"知識データベース保存エラー: {str(e)}")
                 return False
 
         def log_thought(thought_type, content):
@@ -436,10 +470,10 @@ def prepare_task():
                     "content": content,
                 }
                 with open(THINKING_LOG_PATH, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
+                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
                 return True
             except Exception as e:
-                print(f"思考ログ記録エラー: {{str(e)}}")
+                print(f"思考ログ記録エラー: {str(e)}")
                 return False
 
         def update_knowledge(subject, fact, confidence=0.8, source=None):
@@ -490,7 +524,7 @@ def prepare_task():
 
                 return save_success
             except Exception as e:
-                print(f"知識更新エラー: {{str(e)}}")
+                print(f"知識更新エラー: {str(e)}")
                 return False
 
         def add_insight(insight, confidence=0.7):
@@ -678,7 +712,7 @@ def prepare_task():
                                 }
                             )
                 elif isinstance(task_result, str):
-                    lines = task_result.split("\\n")
+                    lines = task_result.split("\n")
                     for line in lines:
                         if ":" in line and len(line) > 10:
                             parts = line.split(":", 1)
@@ -710,7 +744,7 @@ def prepare_task():
 
                 return True
             except Exception as e:
-                print(f"タスク結果統合エラー: {{str(e)}}")
+                print(f"タスク結果統合エラー: {str(e)}")
                 return False
 
         def request_multi_agent_discussion(topic):
@@ -722,7 +756,7 @@ def prepare_task():
 
                 return {"topic": topic, "requested": True, "timestamp": time.time()}
             except Exception as e:
-                print(f"マルチエージェント討論リクエストエラー: {{str(e)}}")
+                print(f"マルチエージェント討論リクエストエラー: {str(e)}")
                 return {}
 
         def prepare_task():
@@ -764,7 +798,7 @@ def prepare_task():
                                 )
                                 break
                 except Exception as e:
-                    print(f"関連知識取得エラー: {{str(e)}}")
+                    print(f"関連知識取得エラー: {str(e)}")
 
                 if related_knowledge:
                     print(
@@ -792,21 +826,55 @@ def prepare_task():
 
                 return task_start_time
             except Exception as e:
-                print(f"タスク準備エラー: {{str(e)}}")
+                print(f"タスク準備エラー: {str(e)}")
                 return time.time()
 
-        {main_code}
+        def run_task():
+            """
+            タスクを実行して結果を返す関数
+            この関数は継続的思考AIで得られた知見を活用し、結果を知識ベースに統合する
+
+            Returns:
+                Any: タスク実行結果（辞書形式が望ましい）
+            """
+            try:
+                result = None
+                main_code = """
+        # Your main task code here
+        """
+                exec(main_code)
+                if result is None:
+                    result = "Task completed successfully"
+                return result
+            except Exception as e:
+                error_details = traceback.format_exc()
+                print(f"タスク実行エラー: {str(e)}")
+                print(error_details)
+                return {"status": "error", "error": str(e), "traceback": error_details}
 
         def main():
+            """
+            メイン実行関数
+            タスクの準備、実行、結果の統合を行う
+            """
             global task_description, insights, hypotheses, conclusions
 
             try:
                 task_start_time = prepare_task()
 
-                task_result = run_task() if "run_task" in globals() else None
+                print("タスクを実行中...")
+                task_result = run_task()
+                print("タスク実行完了")
 
-                if task_result:
-                    integrate_task_results(task_result)
+                if task_result is not None:
+                    print("タスク結果を知識ベースに統合中...")
+                    integrate_success = integrate_task_results(task_result)
+                    if integrate_success:
+                        print("知識ベースへの統合に成功しました")
+                    else:
+                        print("知識ベースへの統合に失敗しました")
+                else:
+                    print("タスク結果がないため知識ベースに統合しません")
 
                 log_thought(
                     "task_execution_complete",
@@ -849,7 +917,7 @@ def prepare_task():
 
             except Exception as e:
                 error_details = traceback.format_exc()
-                error_msg = f"エラー: {{str(e)}}"
+                error_msg = f"エラー: {str(e)}"
                 print(error_msg)
                 print(error_details)
 
@@ -866,7 +934,7 @@ def prepare_task():
 
                     update_knowledge(
                         f"エラーパターン: {type(e).__name__}",
-                        f"タスク実行中に発生: {{str(e)}}",
+                        f"タスク実行中に発生: {str(e)}",
                         confidence=0.7,
                     )
                 except:
@@ -876,18 +944,39 @@ def prepare_task():
 
         if __name__ == "__main__":
             result = main()
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        error_details = traceback.format_exc()
+        print(f"タスク実行エラー: {{str(e)}}")
+        print(error_details)
+        return {"status": "error", "error": str(e), "traceback": error_details}
 
 
 def main():
+    """
+    メイン実行関数
+    タスクの準備、実行、結果の統合を行う
+    """
     global task_description, insights, hypotheses, conclusions
 
     try:
         task_start_time = prepare_task()
 
-        task_result = run_task() if "run_task" in globals() else None
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
 
-        if task_result:
-            integrate_task_results(task_result)
+        if task_result is not None:
+            print("タスク結果を知識ベースに統合中...")
+            integrate_success = integrate_task_results(task_result)
+            if integrate_success:
+                print("知識ベースへの統合に成功しました")
+            else:
+                print("知識ベースへの統合に失敗しました")
+        else:
+            print("タスク結果がないため知識ベースに統合しません")
 
         log_thought(
             "task_execution_complete",
