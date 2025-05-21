@@ -648,13 +648,13 @@ def get_template_for_task(task_description, required_libraries=None, recommended
             required_libraries.append("typing")
     
     # テンプレート内のプレースホルダーを検証
-    template = template.replace("{", "{{").replace("}", "}}")
+    template = template.replace("{imports}", "___IMPORTS_PLACEHOLDER___")
+    template = template.replace("{main_code}", "___MAIN_CODE_PLACEHOLDER___")
     
-    template = template.replace("{{imports}}", "{imports}")
-    template = template.replace("{{main_code}}", "{main_code}")
+    template = template.replace('{str(e)}', '{{str(e)}}')
     
-    template = template.replace('print(f"Error: {{{{str(e)}}}}")', 'print(f"Error: {str(e)}")')
-    template = template.replace('print(f"エラー: {{{{str(e)}}}}")', 'print(f"エラー: {str(e)}")')
+    template = template.replace("___IMPORTS_PLACEHOLDER___", "{imports}")
+    template = template.replace("___MAIN_CODE_PLACEHOLDER___", "{main_code}")
     
     if "{imports}" not in template or "{main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
