@@ -718,9 +718,7 @@ task_info = {{
 }}
 
 def run_task():
-    """
-    タスクを実行して結果を返す関数
-    """
+    # タスクを実行して結果を返す関数
     try:
         result = None
 {main_code}
