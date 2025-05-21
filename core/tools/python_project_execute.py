@@ -126,9 +126,24 @@ class PythonProjectExecuteTool(BaseTool):
             
             template = get_template_for_task(task.description, required_libraries, recommended_packages)
             
-            indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
+            task_specific_code = task.code
             
-            if "result" not in task.code and not any(line.strip().startswith("return ") for line in task.code.split("\n")):
+            template_markers = [
+                "task_info =", "KNOWLEDGE_DB_PATH =", "THINKING_LOG_PATH =",
+                "def load_knowledge_db", "def save_knowledge_db", "def log_thought",
+                "def update_knowledge", "def add_insight", "def add_hypothesis",
+                "def verify_hypothesis", "def add_conclusion", "def integrate_task_results",
+                "def request_multi_agent_discussion", "def prepare_task", "def run_task", "def main"
+            ]
+            
+            clean_lines = []
+            for line in task_specific_code.split("\n"):
+                if not any(marker in line for marker in template_markers):
+                    clean_lines.append(line)
+            
+            indented_code = "\n".join(["        " + line for line in clean_lines])
+            
+            if "result" not in task_specific_code and not any(line.strip().startswith("return ") for line in clean_lines):
                 if task.description.lower().startswith(("calculate", "compute", "find", "analyze")):
                     indented_code += "\n        return result"
             
@@ -193,11 +208,17 @@ task_info = {{
                 safe_template = safe_template.replace(f"{{{field}}}", f"___POS_{field}___")
             
             try:
-                raw_code = safe_template.replace("{imports}", imports_str)
-                raw_code = raw_code.replace("{main_code}", indented_code)
-                raw_code = raw_code.replace("{task_id}", task.id)
-                raw_code = raw_code.replace("{description}", task.description)
-                raw_code = raw_code.replace("{plan_id}", task.plan_id if task.plan_id else "")
+                format_dict = {
+                    "imports": imports_str,
+                    "main_code": indented_code,
+                    "task_id": task.id,
+                    "description": task.description,
+                    "plan_id": task.plan_id if task.plan_id else ""
+                }
+                
+                from string import Template
+                t = Template(safe_template)
+                raw_code = t.safe_substitute(format_dict)
                 
                 for field in positional_fields:
                     raw_code = raw_code.replace(f"___POS_{field}___", f"{{{field}}}")
@@ -220,10 +241,47 @@ task_info = {{
     "plan_id": "{task.plan_id if task.plan_id else ""}"
 }}
 
+KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
+THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
+
+task_description = task_info.get("description", "Unknown task")
+insights = []
+hypotheses = []
+conclusions = []
+
+def load_knowledge_db():
+    try:
+        if os.path.exists(KNOWLEDGE_DB_PATH):
+            with open(KNOWLEDGE_DB_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {{}}
+    except Exception as e:
+        print(f"知識データベース読み込みエラー: {{str(e)}}")
+        return {{}}
+
+def save_knowledge_db(knowledge_db):
+    try:
+        os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
+        with open(KNOWLEDGE_DB_PATH, "w", encoding="utf-8") as f:
+            json.dump(knowledge_db, fp=f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"知識データベース保存エラー: {{str(e)}}")
+        return False
+
+def log_thought(thought_type, content):
+    try:
+        os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
+        log_entry = {{"timestamp": time.time(), "type": thought_type, "content": content}}
+        with open(THINKING_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
+        return True
+    except Exception as e:
+        print(f"思考ログ記録エラー: {{str(e)}}")
+        return False
+
 def run_task():
-    \"\"\"
-    タスクを実行して結果を返す関数
-    \"\"\"
+    # タスクを実行して結果を返す関数
     try:
         result = None
 {indented_code}
@@ -234,11 +292,44 @@ def run_task():
         print(f"タスク実行エラー: {{str(e)}}")
         return {{"error": str(e), "traceback": traceback.format_exc()}}
 
+def integrate_task_results(task_result, confidence=0.8):
+    global task_description
+    if not task_result:
+        return False
+    try:
+        knowledge_items = []
+        if isinstance(task_result, dict):
+            for key, value in task_result.items():
+                if isinstance(value, (str, int, float, bool)):
+                    subject = f"{{task_description[:30]}} - {{key}}"
+                    fact = str(value)
+                    knowledge_items.append({{"subject": subject, "fact": fact, "confidence": confidence}})
+        elif isinstance(task_result, str):
+            lines = task_result.split("\\n")
+            for line in lines:
+                if ":" in line and len(line) > 10:
+                    parts = line.split(":", 1)
+                    subject = f"{{task_description[:30]}} - {{parts[0].strip()}}"
+                    fact = parts[1].strip()
+                    knowledge_items.append({{"subject": subject, "fact": fact, "confidence": confidence}})
+        for item in knowledge_items:
+            update_knowledge(item["subject"], item["fact"], item["confidence"], "task_result_integration")
+        log_thought("task_result_integration", {{"task": task_description, "extracted_knowledge_count": len(knowledge_items)}})
+        return True
+    except Exception as e:
+        print(f"タスク結果統合エラー: {{str(e)}}")
+        return False
+
 def main():
     try:
         print("タスクを実行中...")
         task_result = run_task()
         print("タスク実行完了")
+        if task_result is not None:
+            print("タスク結果を知識ベースに統合中...")
+            integrate_success = integrate_task_results(task_result)
+            if integrate_success:
+                print("知識ベースへの統合に成功しました")
         return task_result
     except Exception as e:
         print(f"Error: {{str(e)}}")
