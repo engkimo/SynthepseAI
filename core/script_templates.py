@@ -701,7 +701,7 @@ def get_template_for_task(task_description, required_libraries=None, recommended
     if "{imports}" not in template or "{main_code}" not in template:
         print(f"Warning: Template missing required placeholders. Using basic template.")
         # 基本テンプレートを使用（インデントに注意）
-        template = """
+        template = r"""
 # 必要なライブラリのインポート
 {imports}
 import typing  # 型アノテーション用

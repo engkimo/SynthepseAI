@@ -134,7 +134,7 @@ class PythonProjectExecuteTool(BaseTool):
             
             if "{imports}" not in template or "{main_code}" not in template:
                 print("Warning: Template missing required placeholders. Using basic template.")
-                template = """
+                template = r"""
 {imports}
 import typing  # 型アノテーション用
 import time  # 時間計測用
@@ -279,7 +279,7 @@ if __name__ == "__main__":
                 formatted_code = raw_code
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
-            formatted_code = f"""
+            formatted_code = fr"""
 {imports_str}
 import typing  # 型アノテーション用
 import time  # 時間計測用
