@@ -102,12 +102,19 @@ class PythonProjectExecuteTool(BaseTool):
         script_name = f"task_{task_id}.py"
         
         # タスク情報を環境変数として設定するコード（インデントなし）
-        task_info_code = f"""task_info = {{
-    "task_id": "{task.id}",
-    "description": "{task.description}",
-    "plan_id": "{task.plan_id}"
-}}
+        task_info_code = r"""task_info = {
+    "task_id": "$task_id",
+    "description": "$description",
+    "plan_id": "$plan_id"
+}
 """
+        from string import Template
+        task_info_template = Template(task_info_code)
+        task_info_code = task_info_template.safe_substitute({
+            "task_id": task.id,
+            "description": task.description,
+            "plan_id": task.plan_id if task.plan_id else ""
+        })
         
         try:
             required_libraries = self._detect_dependencies(task.code)
@@ -370,8 +377,8 @@ if __name__ == "__main__":
                 formatted_code = raw_code
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
-            formatted_code = fr"""
-{imports_str}
+            fallback_template = r"""
+$imports
 import typing  # 型アノテーション用
 import time  # 時間計測用
 import traceback  # エラートレース用
@@ -379,25 +386,23 @@ import os  # ファイル操作用
 import json  # JSON処理用
 import datetime  # 日付処理用
 
-task_info = {{
-    "task_id": "{task.id}",
-    "description": "{task.description}",
-    "plan_id": "{task.plan_id if task.plan_id else ""}"
-}}
+task_info = {
+    "task_id": "$task_id",
+    "description": "$description",
+    "plan_id": "$plan_id"
+}
 
 def run_task():
-    \"\"\"
-    タスクを実行して結果を返す関数
-    \"\"\"
+    # タスクを実行して結果を返す関数
     try:
         result = None
-{indented_code}
+$main_code
         if result is None:
             result = "Task completed successfully"
         return result
     except Exception as e:
-        print(f"タスク実行エラー: {{{{str(e)}}}}")
-        return {{"error": str(e), "traceback": traceback.format_exc()}}
+        print(f"タスク実行エラー: {str(e)}")
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 def main():
     try:
@@ -406,12 +411,21 @@ def main():
         print("タスク実行完了")
         return task_result
     except Exception as e:
-        print(f"Error: {{{{str(e)}}}}")
+        print(f"Error: {str(e)}")
         return str(e)
     
 if __name__ == "__main__":
     result = main()
 """
+            from string import Template
+            fallback_t = Template(fallback_template)
+            formatted_code = fallback_t.safe_substitute({
+                "imports": imports_str,
+                "main_code": indented_code,
+                "task_id": task.id,
+                "description": task.description,
+                "plan_id": task.plan_id if task.plan_id else ""
+            })
         
         # コードの先頭にタスク情報を追加 - task_info_code は不要（テンプレートに含まれている）
         full_code = formatted_code
