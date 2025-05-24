@@ -319,7 +319,7 @@ class PlanningTool(BaseTool):
                     "result": dep_task.result
                 })
         
-        # スクリプトテンプレートを取得
+        # スクリプトテンプレートを取得（タスク固有コードのみ）
         template = get_template_for_task(task.description)
         
         if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:

@@ -102,12 +102,19 @@ class PythonProjectExecuteTool(BaseTool):
         script_name = f"task_{task_id}.py"
         
         # タスク情報を環境変数として設定するコード（インデントなし）
-        task_info_code = f"""task_info = {{
-    "task_id": "{task.id}",
-    "description": "{task.description}",
-    "plan_id": "{task.plan_id}"
-}}
+        task_info_code = r"""task_info = {
+    "task_id": "$task_id",
+    "description": "$description",
+    "plan_id": "$plan_id"
+}
 """
+        from string import Template
+        task_info_template = Template(task_info_code)
+        task_info_code = task_info_template.safe_substitute({
+            "task_id": task.id,
+            "description": task.description,
+            "plan_id": task.plan_id if task.plan_id else ""
+        })
         
         try:
             required_libraries = self._detect_dependencies(task.code)
@@ -126,22 +133,68 @@ class PythonProjectExecuteTool(BaseTool):
             
             template = get_template_for_task(task.description, required_libraries, recommended_packages)
             
-            indented_code = "\n".join(["        " + line for line in task.code.split("\n")])
+            task_specific_code = task.code
+            
+            template_markers = [
+                "task_info =", "KNOWLEDGE_DB_PATH =", "THINKING_LOG_PATH =",
+                "def load_knowledge_db", "def save_knowledge_db", "def log_thought",
+                "def update_knowledge", "def add_insight", "def add_hypothesis",
+                "def verify_hypothesis", "def add_conclusion", "def integrate_task_results",
+                "def request_multi_agent_discussion", "def prepare_task", "def run_task", "def main"
+            ]
+            
+            clean_lines = []
+            for line in task_specific_code.split("\n"):
+                if not any(marker in line for marker in template_markers):
+                    clean_lines.append(line)
+            
+            indented_code = "\n".join(["        " + line for line in clean_lines])
+            
+            if "result" not in task_specific_code and not any(line.strip().startswith("return ") for line in clean_lines):
+                if task.description.lower().startswith(("calculate", "compute", "find", "analyze")):
+                    indented_code += "\n        return result"
             
             if "{imports}" not in template or "{main_code}" not in template:
                 print("Warning: Template missing required placeholders. Using basic template.")
-                template = """
+                template = r"""
 {imports}
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
+
+task_info = {{
+    "task_id": "{task_id}",
+    "description": "{description}",
+    "plan_id": "{plan_id}"
+}}
+
+def run_task():
+    \"\"\"
+    タスクを実行して結果を返す関数
+    \"\"\"
+    try:
+        result = None
+{main_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        print(f"Error: {{{{str(e)}}}}")
+        return {{"error": str(e), "traceback": traceback.format_exc()}}
 
 def main():
     try:
-{main_code}
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
+        return task_result
     except Exception as e:
         print(f"Error: {{{{str(e)}}}}")
         return str(e)
     
-    return "Task completed successfully"
-
 if __name__ == "__main__":
     result = main()
 """
@@ -162,11 +215,17 @@ task_info = {{
                 safe_template = safe_template.replace(f"{{{field}}}", f"___POS_{field}___")
             
             try:
-                raw_code = safe_template.replace("{imports}", imports_str)
-                raw_code = raw_code.replace("{main_code}", indented_code)
-                raw_code = raw_code.replace("{task_id}", task.id)
-                raw_code = raw_code.replace("{description}", task.description)
-                raw_code = raw_code.replace("{plan_id}", task.plan_id if task.plan_id else "")
+                format_dict = {
+                    "imports": imports_str,
+                    "main_code": indented_code,
+                    "task_id": task.id,
+                    "description": task.description,
+                    "plan_id": task.plan_id if task.plan_id else ""
+                }
+                
+                from string import Template
+                t = Template(safe_template)
+                raw_code = t.safe_substitute(format_dict)
                 
                 for field in positional_fields:
                     raw_code = raw_code.replace(f"___POS_{field}___", f"{{{field}}}")
@@ -176,17 +235,108 @@ task_info = {{
                 print(f"テンプレート処理エラー: {str(e)}")
                 raw_code = f"""
 {imports_str}
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
+
+task_info = {{
+    "task_id": "{task.id}",
+    "description": "{task.description}",
+    "plan_id": "{task.plan_id if task.plan_id else ""}"
+}}
+
+KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
+THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
+
+task_description = task_info.get("description", "Unknown task")
+insights = []
+hypotheses = []
+conclusions = []
+
+def load_knowledge_db():
+    try:
+        if os.path.exists(KNOWLEDGE_DB_PATH):
+            with open(KNOWLEDGE_DB_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {{}}
+    except Exception as e:
+        print(f"知識データベース読み込みエラー: {{str(e)}}")
+        return {{}}
+
+def save_knowledge_db(knowledge_db):
+    try:
+        os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
+        with open(KNOWLEDGE_DB_PATH, "w", encoding="utf-8") as f:
+            json.dump(knowledge_db, fp=f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"知識データベース保存エラー: {{str(e)}}")
+        return False
+
+def log_thought(thought_type, content):
+    try:
+        os.makedirs(os.path.dirname(THINKING_LOG_PATH), exist_ok=True)
+        log_entry = {{"timestamp": time.time(), "type": thought_type, "content": content}}
+        with open(THINKING_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\\n")
+        return True
+    except Exception as e:
+        print(f"思考ログ記録エラー: {{str(e)}}")
+        return False
 
 def run_task():
-    \"\"\"
-    Execute the task and return the result
-    \"\"\"
-    {indented_code}
-    return result
+    # タスクを実行して結果を返す関数
+    try:
+        result = None
+{indented_code}
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        print(f"タスク実行エラー: {{str(e)}}")
+        return {{"error": str(e), "traceback": traceback.format_exc()}}
+
+def integrate_task_results(task_result, confidence=0.8):
+    global task_description
+    if not task_result:
+        return False
+    try:
+        knowledge_items = []
+        if isinstance(task_result, dict):
+            for key, value in task_result.items():
+                if isinstance(value, (str, int, float, bool)):
+                    subject = f"{{task_description[:30]}} - {{key}}"
+                    fact = str(value)
+                    knowledge_items.append({{"subject": subject, "fact": fact, "confidence": confidence}})
+        elif isinstance(task_result, str):
+            lines = task_result.split("\\n")
+            for line in lines:
+                if ":" in line and len(line) > 10:
+                    parts = line.split(":", 1)
+                    subject = f"{{task_description[:30]}} - {{parts[0].strip()}}"
+                    fact = parts[1].strip()
+                    knowledge_items.append({{"subject": subject, "fact": fact, "confidence": confidence}})
+        for item in knowledge_items:
+            update_knowledge(item["subject"], item["fact"], item["confidence"], "task_result_integration")
+        log_thought("task_result_integration", {{"task": task_description, "extracted_knowledge_count": len(knowledge_items)}})
+        return True
+    except Exception as e:
+        print(f"タスク結果統合エラー: {{str(e)}}")
+        return False
 
 def main():
     try:
+        print("タスクを実行中...")
         task_result = run_task()
+        print("タスク実行完了")
+        if task_result is not None:
+            print("タスク結果を知識ベースに統合中...")
+            integrate_success = integrate_task_results(task_result)
+            if integrate_success:
+                print("知識ベースへの統合に成功しました")
         return task_result
     except Exception as e:
         print(f"Error: {{str(e)}}")
@@ -227,21 +377,55 @@ if __name__ == "__main__":
                 formatted_code = raw_code
         except KeyError as e:
             print(f"Template formatting error: {str(e)}. Using basic template.")
-            formatted_code = f"""
-{imports_str}
+            fallback_template = r"""
+$imports
+import typing  # 型アノテーション用
+import time  # 時間計測用
+import traceback  # エラートレース用
+import os  # ファイル操作用
+import json  # JSON処理用
+import datetime  # 日付処理用
+
+task_info = {
+    "task_id": "$task_id",
+    "description": "$description",
+    "plan_id": "$plan_id"
+}
+
+def run_task():
+    # タスクを実行して結果を返す関数
+    try:
+        result = None
+$main_code
+        if result is None:
+            result = "Task completed successfully"
+        return result
+    except Exception as e:
+        print(f"タスク実行エラー: {str(e)}")
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 def main():
     try:
-{indented_code}
+        print("タスクを実行中...")
+        task_result = run_task()
+        print("タスク実行完了")
+        return task_result
     except Exception as e:
-        print(f"Error: {{{{str(e)}}}}")
+        print(f"Error: {str(e)}")
         return str(e)
     
-    return "Task completed successfully"
-
 if __name__ == "__main__":
     result = main()
 """
+            from string import Template
+            fallback_t = Template(fallback_template)
+            formatted_code = fallback_t.safe_substitute({
+                "imports": imports_str,
+                "main_code": indented_code,
+                "task_id": task.id,
+                "description": task.description,
+                "plan_id": task.plan_id if task.plan_id else ""
+            })
         
         # コードの先頭にタスク情報を追加 - task_info_code は不要（テンプレートに含まれている）
         full_code = formatted_code

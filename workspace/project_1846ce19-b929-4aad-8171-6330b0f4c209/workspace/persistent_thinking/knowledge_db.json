@@ -1,0 +1,20 @@
+{
+  "Import necessary libraries for - status": {
+    "fact": "error",
+    "confidence": 0.8,
+    "last_updated": 1747834477.923373,
+    "source": "task_result_integration"
+  },
+  "Import necessary libraries for - error": {
+    "fact": "unexpected indent (<string>, line 2)",
+    "confidence": 0.8,
+    "last_updated": 1747834477.923567,
+    "source": "task_result_integration"
+  },
+  "Import necessary libraries for - traceback": {
+    "fact": "Traceback (most recent call last):\n  File \"/Users/ohoriryosuke/20250417_synthepseai/SynthepseAI/workspace/project_1846ce19-b929-4aad-8171-6330b0f4c209/task_e39d66e9-e531-4467-ab77-3ab75ce9485b.py\", line 428, in run_task\n    exec(imports)\n  File \"<string>\", line 2\n    import os\nIndentationError: unexpected indent\n",
+    "confidence": 0.8,
+    "last_updated": 1747834477.9237041,
+    "source": "task_result_integration"
+  }
+}
