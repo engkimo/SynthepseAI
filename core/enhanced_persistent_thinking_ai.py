@@ -554,17 +554,28 @@ class EnhancedPersistentThinkingAI:
         """現在の思考状態を取得"""
         return self.thinking_state
     
-    def start_continuous_thinking(self, initial_task=None):
-        """バックグラウンドスレッドで継続的思考を開始"""
+    def start_continuous_thinking(self, initial_task=None, thinking_goal=None):
+        """バックグラウンドスレッドで継続的思考を開始 - 目標指向版"""
         if self.thinking_thread is not None and self.thinking_thread.is_alive():
             return
             
         self.stop_thinking = False
-        self.thinking_thread = threading.Thread(target=self._continuous_thinking_loop, args=(initial_task,))
+        
+        if thinking_goal:
+            self.thinking_state["thinking_goal"] = thinking_goal
+            self._log_thought("thinking_goal_set", {
+                "goal": thinking_goal,
+                "initial_task": initial_task
+            })
+        
+        self.thinking_thread = threading.Thread(
+            target=self._continuous_thinking_loop, 
+            args=(initial_task, thinking_goal)
+        )
         self.thinking_thread.daemon = True
         self.thinking_thread.start()
         
-        print("バックグラウンドでの継続的思考を開始しました。")
+        print(f"バックグラウンドでの継続的思考を開始しました。目標: {thinking_goal or '一般的な改善'}")
     
     def stop_continuous_thinking(self):
         """継続的思考を停止"""
@@ -594,8 +605,8 @@ class EnhancedPersistentThinkingAI:
             
         print("継続思考を終了します。")
     
-    def _continuous_thinking_loop(self, initial_task=None):
-        """継続的思考のメインループ"""
+    def _continuous_thinking_loop(self, initial_task=None, thinking_goal=None):
+        """継続的思考のメインループ - 目標指向版"""
         current_task = initial_task
         
         while not self.stop_thinking:
@@ -604,9 +615,10 @@ class EnhancedPersistentThinkingAI:
                     print("モックモード: 継続的思考をシミュレート中...")
                     self._log_thought("mock_thinking", {
                         "timestamp": time.time(),
-                        "message": "モックモードでの継続的思考をシミュレート"
+                        "message": "モックモードでの継続的思考をシミュレート",
+                        "thinking_goal": thinking_goal
                     })
-                    time.sleep(10)  # モックモードでは長めの間隔で実行
+                    time.sleep(10)
                     continue
                 
                 try:
@@ -629,7 +641,10 @@ class EnhancedPersistentThinkingAI:
                             self.llm.mock_mode = True
                 else:
                     try:
-                        self._think_about_knowledge()
+                        if thinking_goal:
+                            self._think_about_goal_progress(thinking_goal)
+                        else:
+                            self._think_about_knowledge()
                     except Exception as e:
                         print(f"知識思考中にエラーが発生: {str(e)}")
                         if "api key" in str(e).lower() or "auth" in str(e).lower():
@@ -642,7 +657,69 @@ class EnhancedPersistentThinkingAI:
                 if "api key" in str(e).lower() or "auth" in str(e).lower():
                     print("APIキーエラーを検出: モックモードに切り替えます")
                     self.llm.mock_mode = True
-                time.sleep(5.0)  # エラー発生時は少し待機
+                time.sleep(5.0)
+
+    def _think_about_goal_progress(self, thinking_goal):
+        """目標に向けた進捗について考える"""
+        if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+            thought = f"モックモード: 目標「{thinking_goal}」に向けた進捗思考は制限されています。"
+            
+            self.thinking_state["reflections"].append({
+                "time": time.time(),
+                "content": thought,
+                "goal": thinking_goal
+            })
+            
+            self._log_thought("goal_progress_thinking", {
+                "thinking_goal": thinking_goal,
+                "thought": thought,
+                "mock_mode": True
+            })
+            
+            self.thinking_state["last_thought_time"] = time.time()
+            return
+        
+        goal_knowledge = self.get_knowledge_for_script(thinking_goal)
+        
+        prompt = f"""
+        以下の目標に向けた進捗と改善について考えてください：
+        
+        目標：{thinking_goal}
+        
+        関連する知識：
+        {self._format_knowledge_for_prompt(goal_knowledge.get("related_knowledge", []))}
+        
+        成功パターン：
+        {self._format_knowledge_for_prompt(goal_knowledge.get("success_patterns", []))}
+        
+        最適化のヒント：
+        {self._format_knowledge_for_prompt(goal_knowledge.get("optimization_tips", []))}
+        
+        この目標を達成するために：
+        1. 現在の進捗状況の評価
+        2. 次に取り組むべき具体的なステップ
+        3. 改善可能な領域の特定
+        4. 新しいアプローチや戦略の提案
+        
+        を含む考えを共有してください。
+        """
+        
+        thought = self.llm.generate_text(prompt)
+        
+        self.thinking_state["reflections"].append({
+            "time": time.time(),
+            "content": thought,
+            "goal": thinking_goal,
+            "knowledge_used": len(goal_knowledge.get("related_knowledge", []))
+        })
+        
+        self._log_thought("goal_progress_thinking", {
+            "thinking_goal": thinking_goal,
+            "thought": thought,
+            "knowledge_sources_used": len(goal_knowledge.get("related_knowledge", []))
+        })
+        
+        self.thinking_state["last_thought_time"] = time.time()
     
     def _should_get_external_info(self):
         """外部情報を取得すべきかどうかを判断"""
@@ -723,7 +800,7 @@ class EnhancedPersistentThinkingAI:
             print(f"Web知識抽出エラー: {str(e)}")
     
     def _think_about_current_task(self):
-        """現在のタスクについて考える"""
+        """現在のタスクについて目的指向で考える - 蓄積された知識を活用"""
         task = self.thinking_state["current_task"]
         
         if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
@@ -743,30 +820,138 @@ class EnhancedPersistentThinkingAI:
             self.thinking_state["last_thought_time"] = time.time()
             return
         
+        related_knowledge = self.get_knowledge_for_script(task)
+        
+        related_insights = self._get_related_insights(task, limit=5)
+        
+        multi_agent_insights = related_knowledge.get("multi_agent_insights", [])
+        
         prompt = f"""
-        現在取り組んでいるタスクについて、新たな視点や考え方はありますか？
+        現在取り組んでいるタスクについて、蓄積された知識と経験を活用して深く考えてください：
         
         タスク：{task}
         
-        以前の考え：
-        {self.thinking_state["reflections"][-1].get("content", self.thinking_state["reflections"][-1].get("solution", "なし")) if self.thinking_state["reflections"] else "なし"}
+        関連する知識：
+        {self._format_knowledge_for_prompt(related_knowledge.get("related_knowledge", []))}
         
-        新しい考えを短く共有してください。
+        過去の洞察：
+        {self._format_insights_for_prompt(related_insights)}
+        
+        マルチエージェント討論の結果：
+        {self._format_multi_agent_insights_for_prompt(multi_agent_insights)}
+        
+        以前の考え：
+        {self.thinking_state["reflections"][-1].get("content", "なし") if self.thinking_state["reflections"] else "なし"}
+        
+        上記の情報を踏まえて：
+        1. このタスクを成功させるための新しいアプローチや改善点
+        2. 過去の経験から学んだ注意すべき点
+        3. 目標達成に向けた具体的な次のステップ
+        
+        を含む新しい考えを共有してください。
         """
         
         thought = self.llm.generate_text(prompt)
         
         self.thinking_state["reflections"].append({
             "time": time.time(),
-            "content": thought
+            "content": thought,
+            "knowledge_used": len(related_knowledge.get("related_knowledge", [])),
+            "insights_used": len(related_insights),
+            "multi_agent_insights_used": len(multi_agent_insights)
         })
         
-        self._log_thought("continuous_thinking", {
+        self._log_thought("goal_oriented_thinking", {
             "task": task,
-            "thought": thought
+            "thought": thought,
+            "knowledge_sources": {
+                "related_knowledge_count": len(related_knowledge.get("related_knowledge", [])),
+                "insights_count": len(related_insights),
+                "multi_agent_insights_count": len(multi_agent_insights)
+            }
         })
+        
+        self._extract_insights_from_thought(task, thought)
         
         self.thinking_state["last_thought_time"] = time.time()
+    
+    def _format_knowledge_for_prompt(self, knowledge_list):
+        """知識リストをプロンプト用にフォーマット"""
+        if not knowledge_list:
+            return "関連する知識はありません。"
+        
+        formatted = []
+        for k in knowledge_list[:5]:
+            formatted.append(f"- {k['subject']}: {k['fact']} (確信度: {k['confidence']})")
+        return "\n".join(formatted)
+
+    def _format_insights_for_prompt(self, insights_list):
+        """洞察リストをプロンプト用にフォーマット"""
+        if not insights_list:
+            return "過去の洞察はありません。"
+        
+        formatted = []
+        for insight in insights_list[:3]:
+            content = insight.get("content", {})
+            if isinstance(content, dict):
+                if "insight" in content:
+                    formatted.append(f"- {content['insight']}")
+                elif "thought" in content:
+                    formatted.append(f"- {content['thought']}")
+        return "\n".join(formatted)
+
+    def _format_multi_agent_insights_for_prompt(self, insights_list):
+        """マルチエージェント洞察をプロンプト用にフォーマット"""
+        if not insights_list:
+            return "マルチエージェント討論の結果はありません。"
+        
+        formatted = []
+        for insight in insights_list[:3]:
+            insight_type = insight.get("type", "")
+            content = insight.get("content", "")
+            if insight_type == "consensus":
+                formatted.append(f"- 合意点: {content}")
+            elif insight_type == "agent_perspective":
+                agent = insight.get("agent", "エージェント")
+                formatted.append(f"- {agent}の視点: {content}")
+        return "\n".join(formatted)
+
+    def _extract_insights_from_thought(self, task, thought):
+        """思考から新しい洞察を抽出して知識ベースに追加"""
+        try:
+            extract_prompt = f"""
+            以下の思考から、将来のタスクに役立つ重要な洞察や学びを抽出してください：
+            
+            タスク: {task}
+            思考: {thought}
+            
+            以下の形式でJSON配列として返してください：
+            [
+                {{"subject": "洞察の主題", "fact": "具体的な洞察や学び", "confidence": 0.8}}
+            ]
+            """
+            
+            insights_json = self.llm.generate_text(extract_prompt)
+            
+            import re
+            import json
+            json_match = re.search(r'\[\s*\{.*\}\s*\]', insights_json, re.DOTALL)
+            if json_match:
+                insights = json.loads(json_match.group(0))
+                for insight in insights:
+                    subject = insight.get("subject", "")
+                    fact = insight.get("fact", "")
+                    confidence = insight.get("confidence", 0.7)
+                    
+                    if subject and fact and confidence > 0.6:
+                        self._update_knowledge(
+                            f"思考洞察: {subject}",
+                            fact,
+                            confidence,
+                            "continuous_thinking"
+                        )
+        except Exception as e:
+            print(f"思考からの洞察抽出エラー: {str(e)}")
     
     def _suggest_packages_for_task(self, task_description: str) -> List[Dict[str, Any]]:
         """
@@ -1002,7 +1187,7 @@ class EnhancedPersistentThinkingAI:
     
     def get_knowledge_for_script(self, task_description: str, keywords: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        スクリプト生成用の知識を提供
+        スクリプト生成用の知識を提供 - 強化版
         
         Args:
             task_description: タスクの説明
@@ -1017,7 +1202,10 @@ class EnhancedPersistentThinkingAI:
             "thinking_insights": [],
             "hypotheses": [],
             "multi_agent_insights": [],
-            "recommended_packages": []
+            "recommended_packages": [],
+            "success_patterns": [],
+            "failure_patterns": [],
+            "optimization_tips": []
         }
         
         if not keywords:
@@ -1033,20 +1221,34 @@ class EnhancedPersistentThinkingAI:
         })
         
         for subject, data in self.knowledge_db.items():
+            fact = data.get("fact", "")
+            confidence = data.get("confidence", 0.0)
+            
+            is_relevant = False
             for keyword in keywords:
-                if keyword.lower() in subject.lower() or (
-                    data.get("fact") and keyword.lower() in data.get("fact", "").lower()
-                ):
-                    result["related_knowledge"].append({
-                        "subject": subject,
-                        "fact": data.get("fact", ""),
-                        "confidence": data.get("confidence", 0.0),
-                        "last_updated": data.get("last_updated", 0),
-                        "source": data.get("source", "unknown")
-                    })
+                if keyword.lower() in subject.lower() or keyword.lower() in fact.lower():
+                    is_relevant = True
                     break
+            
+            if is_relevant:
+                knowledge_item = {
+                    "subject": subject,
+                    "fact": fact,
+                    "confidence": confidence,
+                    "last_updated": data.get("last_updated", 0),
+                    "source": data.get("source", "unknown")
+                }
+                
+                if "[success_factor]" in subject:
+                    result["success_patterns"].append(knowledge_item)
+                elif "[failure_factor]" in subject:
+                    result["failure_patterns"].append(knowledge_item)
+                elif "[optimization]" in subject:
+                    result["optimization_tips"].append(knowledge_item)
+                else:
+                    result["related_knowledge"].append(knowledge_item)
         
-        related_insights = self._get_related_insights(task_description, limit=5)
+        related_insights = self._get_enhanced_related_insights(task_description, limit=10)
         result["thinking_insights"] = related_insights
         
         for insight in related_insights:
@@ -1096,9 +1298,12 @@ class EnhancedPersistentThinkingAI:
                     "error": str(e)
                 })
         
-        self._log_thought("knowledge_for_script", {
+        self._log_thought("enhanced_knowledge_for_script", {
             "task": task_description,
             "knowledge_count": len(result["related_knowledge"]),
+            "success_patterns_count": len(result["success_patterns"]),
+            "failure_patterns_count": len(result["failure_patterns"]),
+            "optimization_tips_count": len(result["optimization_tips"]),
             "insights_count": len(result["thinking_insights"]),
             "hypotheses_count": len(result["hypotheses"]),
             "multi_agent_insights_count": len(result["multi_agent_insights"]),
@@ -1106,6 +1311,47 @@ class EnhancedPersistentThinkingAI:
         })
         
         return result
+
+    def _get_enhanced_related_insights(self, text: str, limit: int = 10) -> List[Dict]:
+        """関連する洞察を取得 - 強化版"""
+        insights = []
+        try:
+            log_path = self.log_path
+            if os.path.exists(log_path):
+                with open(log_path, 'r', encoding='utf-8') as f:
+                    keywords = self._extract_keywords_from_text(text)
+                    for line in f:
+                        try:
+                            entry = json.loads(line.strip())
+                            entry_type = entry.get("type")
+                            
+                            if entry_type in [
+                                "task_insight", "hypothesis_verification", "task_conclusion",
+                                "goal_oriented_thinking", "enhanced_task_result_integration",
+                                "multi_agent_discussion", "knowledge_reflection"
+                            ]:
+                                content = entry.get("content", {})
+                                content_text = json.dumps(content, ensure_ascii=False).lower()
+                                
+                                for keyword in keywords:
+                                    if keyword in content_text:
+                                        insights.append({
+                                            "type": entry_type,
+                                            "timestamp": entry.get("timestamp"),
+                                            "content": content
+                                        })
+                                        break
+                                        
+                                if len(insights) >= limit:
+                                    break
+                        except:
+                            continue
+        except Exception as e:
+            self._log_thought("get_enhanced_related_insights_error", {
+                "error": str(e)
+            })
+            
+        return insights
     
     def _extract_keywords_from_text(self, text: str) -> List[str]:
         """テキストからキーワードを抽出"""
@@ -1115,7 +1361,7 @@ class EnhancedPersistentThinkingAI:
     
     def integrate_task_results(self, goal: str, result: str) -> bool:
         """
-        タスク実行結果を知識ベースに統合する
+        タスク実行結果を知識ベースに統合する - 強化版
         
         Args:
             goal: タスクの目標
@@ -1128,51 +1374,142 @@ class EnhancedPersistentThinkingAI:
             return False
             
         try:
-            knowledge_items = []
-            
-            if isinstance(result, dict):
-                for key, value in result.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        subject = f"{goal[:30]} - {key}"
-                        fact = str(value)
-                        knowledge_items.append({
-                            "subject": subject,
-                            "fact": fact,
-                            "confidence": 0.8
-                        })
-            elif isinstance(result, str):
-                lines = result.split('\n')
-                for line in lines:
-                    if ':' in line and len(line) > 10:
-                        parts = line.split(':', 1)
-                        subject = f"{goal[:30]} - {parts[0].strip()}"
-                        fact = parts[1].strip()
-                        knowledge_items.append({
-                            "subject": subject,
-                            "fact": fact,
-                            "confidence": 0.8
-                        })
-            
-            for item in knowledge_items:
-                self._update_knowledge(
-                    item["subject"],
-                    item["fact"],
-                    item["confidence"],
-                    "task_result_integration"
-                )
+            if hasattr(self.llm, 'mock_mode') and self.llm.mock_mode:
+                knowledge_items = [{
+                    "subject": f"タスク結果: {goal[:30]}",
+                    "fact": f"モックモードでタスクが実行されました: {result[:100]}",
+                    "confidence": 0.7,
+                    "category": "general"
+                }]
+            else:
+                extraction_prompt = f"""
+                以下のタスクとその実行結果から、将来のタスクに役立つ知識を抽出してください：
                 
-            self._log_thought("task_result_integration", {
+                目標: {goal}
+                結果: {result}
+                
+                以下の観点から知識を抽出してください：
+                1. 成功要因や失敗要因
+                2. 使用した手法やアプローチの効果
+                3. 遭遇した問題とその解決方法
+                4. 改善可能な点や最適化のヒント
+                5. 類似タスクに適用できる一般的な原則
+                
+                以下の形式でJSON配列として返してください：
+                [
+                    {{
+                        "subject": "知識の主題",
+                        "fact": "具体的な知識や洞察",
+                        "confidence": 0.8,
+                        "category": "success_factor|failure_factor|method|problem_solution|optimization|general_principle"
+                    }}
+                ]
+                """
+                
+                knowledge_json = self.llm.generate_text(extraction_prompt)
+                
+                import re
+                import json
+                json_match = re.search(r'\[\s*\{.*\}\s*\]', knowledge_json, re.DOTALL)
+                if json_match:
+                    knowledge_items = json.loads(json_match.group(0))
+                else:
+                    knowledge_items = self._basic_result_integration(goal, result)
+            
+            integrated_count = 0
+            for item in knowledge_items:
+                subject = item.get("subject", "")
+                fact = item.get("fact", "")
+                confidence = item.get("confidence", 0.7)
+                category = item.get("category", "general")
+                
+                if subject and fact and confidence > 0.6:
+                    enhanced_subject = f"[{category}] {subject}"
+                    
+                    success = self._update_knowledge(
+                        enhanced_subject,
+                        fact,
+                        confidence,
+                        "enhanced_task_result_integration"
+                    )
+                    
+                    if success:
+                        integrated_count += 1
+            
+            self._log_thought("enhanced_task_result_integration", {
                 "goal": goal,
-                "extracted_knowledge_count": len(knowledge_items)
+                "result_length": len(result),
+                "extracted_knowledge_count": len(knowledge_items),
+                "integrated_knowledge_count": integrated_count,
+                "integration_method": "llm_enhanced" if not (hasattr(self.llm, 'mock_mode') and self.llm.mock_mode) else "mock_mode"
             })
             
-            return True
+            self._analyze_task_relationships(goal, result, knowledge_items)
+            
+            return integrated_count > 0
+            
         except Exception as e:
             self._log_thought("task_result_integration_error", {
                 "goal": goal,
                 "error": str(e)
             })
             return False
+
+    def _basic_result_integration(self, goal: str, result: str) -> List[Dict]:
+        """基本的な結果統合（フォールバック用）"""
+        knowledge_items = []
+        
+        if isinstance(result, dict):
+            for key, value in result.items():
+                if isinstance(value, (str, int, float, bool)):
+                    subject = f"{goal[:30]} - {key}"
+                    fact = str(value)
+                    knowledge_items.append({
+                        "subject": subject,
+                        "fact": fact,
+                        "confidence": 0.7,
+                        "category": "general"
+                    })
+        elif isinstance(result, str):
+            lines = result.split('\n')
+            for line in lines:
+                if ':' in line and len(line) > 10:
+                    parts = line.split(':', 1)
+                    subject = f"{goal[:30]} - {parts[0].strip()}"
+                    fact = parts[1].strip()
+                    knowledge_items.append({
+                        "subject": subject,
+                        "fact": fact,
+                        "confidence": 0.7,
+                        "category": "general"
+                    })
+        
+        return knowledge_items
+
+    def _analyze_task_relationships(self, goal: str, result: str, knowledge_items: List[Dict]):
+        """タスク間の関連性を分析"""
+        try:
+            keywords = self._extract_keywords_from_text(goal)
+            related_tasks = []
+            
+            for subject, data in self.knowledge_db.items():
+                if any(keyword.lower() in subject.lower() for keyword in keywords):
+                    related_tasks.append({
+                        "subject": subject,
+                        "fact": data.get("fact", ""),
+                        "confidence": data.get("confidence", 0)
+                    })
+            
+            if related_tasks:
+                self._log_thought("task_relationship_analysis", {
+                    "current_goal": goal,
+                    "related_tasks_count": len(related_tasks),
+                    "new_knowledge_count": len(knowledge_items),
+                    "analysis": f"Found {len(related_tasks)} related tasks in knowledge base"
+                })
+                
+        except Exception as e:
+            print(f"タスク関連性分析エラー: {str(e)}")
     
     def _get_related_insights(self, text: str, limit: int = 5) -> List[Dict]:
         """関連する洞察を取得"""

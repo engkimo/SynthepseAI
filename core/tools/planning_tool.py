@@ -425,28 +425,62 @@ class PlanningTool(BaseTool):
             thinking_log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
             if os.path.exists(thinking_log_path):
                 recent_thoughts = []
+                goal_oriented_thoughts = []
+                
                 with open(thinking_log_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         try:
                             thought = json.loads(line.strip())
-                            if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
+                            thought_type = thought.get("type", "")
+                            
+                            if thought_type == "goal_oriented_thinking":
+                                goal_oriented_thoughts.append(thought)
+                            elif thought_type in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
                                 recent_thoughts.append(thought)
                         except:
                             pass
                 
-                if recent_thoughts:
-                    thinking_insights += "\nRecent thinking insights:\n"
-                    for thought in recent_thoughts[-3:]:
+                priority_thoughts = goal_oriented_thoughts[-5:] + recent_thoughts[-3:]
+                
+                if priority_thoughts:
+                    thinking_insights += "\nRecent thinking insights (prioritizing goal-oriented thoughts):\n"
+                    for thought in priority_thoughts:
                         thought_type = thought.get("type", "")
                         content = thought.get("content", {})
-                        if thought_type == "continuous_thinking":
-                            thinking_insights += f"- Thought: {content.get('thought', '')}\n"
+                        
+                        if thought_type == "goal_oriented_thinking":
+                            task_context = content.get("task", "")
+                            thought_content = content.get("thought", "")
+                            knowledge_sources = content.get("knowledge_sources", {})
+                            thinking_insights += f"- Goal-oriented insight for '{task_context}': {thought_content[:200]}... "
+                            thinking_insights += f"(used {knowledge_sources.get('related_knowledge_count', 0)} knowledge items)\n"
+                        elif thought_type == "continuous_thinking":
+                            thinking_insights += f"- Thought: {content.get('thought', '')[:150]}...\n"
                         elif thought_type == "knowledge_reflection":
-                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')}\n"
+                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')[:150]}...\n"
                         elif thought_type == "web_knowledge_update":
-                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
+                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')[:100]}...\n"
+                            
+                multi_agent_discussions = []
+                with open(thinking_log_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            thought = json.loads(line.strip())
+                            if thought.get("type") == "multi_agent_discussion":
+                                multi_agent_discussions.append(thought)
+                        except:
+                            pass
+                
+                if multi_agent_discussions:
+                    thinking_insights += "\nMulti-agent discussion insights:\n"
+                    for discussion in multi_agent_discussions[-2:]:
+                        content = discussion.get("content", {})
+                        topic = content.get("topic", "")
+                        consensus = content.get("consensus", "")
+                        thinking_insights += f"- Discussion on '{topic}': {consensus[:200]}...\n"
+                        
         except Exception as e:
-            print(f"Error getting thinking insights: {str(e)}")
+            print(f"Error getting enhanced thinking insights: {str(e)}")
 
         prompt = f"""
         Overall Goal: {goal}
@@ -682,28 +716,62 @@ if __name__ == "__main__":
             thinking_log_path = "./workspace/persistent_thinking/thinking_log.jsonl"
             if os.path.exists(thinking_log_path):
                 recent_thoughts = []
+                goal_oriented_thoughts = []
+                
                 with open(thinking_log_path, 'r', encoding='utf-8') as f:
                     for line in f:
                         try:
                             thought = json.loads(line.strip())
-                            if thought.get("type") in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
+                            thought_type = thought.get("type", "")
+                            
+                            if thought_type == "goal_oriented_thinking":
+                                goal_oriented_thoughts.append(thought)
+                            elif thought_type in ["continuous_thinking", "knowledge_reflection", "web_knowledge_update"]:
                                 recent_thoughts.append(thought)
                         except:
                             pass
                 
-                if recent_thoughts:
-                    thinking_insights += "\nRecent thinking insights:\n"
-                    for thought in recent_thoughts[-3:]:
+                priority_thoughts = goal_oriented_thoughts[-5:] + recent_thoughts[-3:]
+                
+                if priority_thoughts:
+                    thinking_insights += "\nRecent thinking insights (prioritizing goal-oriented thoughts):\n"
+                    for thought in priority_thoughts:
                         thought_type = thought.get("type", "")
                         content = thought.get("content", {})
-                        if thought_type == "continuous_thinking":
-                            thinking_insights += f"- Thought: {content.get('thought', '')}\n"
+                        
+                        if thought_type == "goal_oriented_thinking":
+                            task_context = content.get("task", "")
+                            thought_content = content.get("thought", "")
+                            knowledge_sources = content.get("knowledge_sources", {})
+                            thinking_insights += f"- Goal-oriented insight for '{task_context}': {thought_content[:200]}... "
+                            thinking_insights += f"(used {knowledge_sources.get('related_knowledge_count', 0)} knowledge items)\n"
+                        elif thought_type == "continuous_thinking":
+                            thinking_insights += f"- Thought: {content.get('thought', '')[:150]}...\n"
                         elif thought_type == "knowledge_reflection":
-                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')}\n"
+                            thinking_insights += f"- Reflection on '{content.get('subject', '')}': {content.get('thought', '')[:150]}...\n"
                         elif thought_type == "web_knowledge_update":
-                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')}\n"
+                            thinking_insights += f"- Web knowledge: {content.get('subject', '')} - {content.get('fact', '')[:100]}...\n"
+                            
+                multi_agent_discussions = []
+                with open(thinking_log_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            thought = json.loads(line.strip())
+                            if thought.get("type") == "multi_agent_discussion":
+                                multi_agent_discussions.append(thought)
+                        except:
+                            pass
+                
+                if multi_agent_discussions:
+                    thinking_insights += "\nMulti-agent discussion insights:\n"
+                    for discussion in multi_agent_discussions[-2:]:
+                        content = discussion.get("content", {})
+                        topic = content.get("topic", "")
+                        consensus = content.get("consensus", "")
+                        thinking_insights += f"- Discussion on '{topic}': {consensus[:200]}...\n"
+                        
         except Exception as e:
-            print(f"Error getting thinking insights: {str(e)}")
+            print(f"Error getting enhanced thinking insights: {str(e)}")
         
         prompt = f"""
         Overall Goal: {goal}
