@@ -749,3 +749,109 @@ if __name__ == "__main__":
 """
     
     return template
+
+def get_relevant_knowledge(task_keywords, limit=5):
+    """タスクに関連する知識を取得"""
+    try:
+        import json
+        import os
+        
+        knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
+        if not os.path.exists(knowledge_db_path):
+            return []
+            
+        with open(knowledge_db_path, 'r', encoding='utf-8') as f:
+            knowledge_db = json.load(f)
+            
+        relevant_knowledge = []
+        
+        for subject, data in knowledge_db.items():
+            fact = data.get("fact", "")
+            confidence = data.get("confidence", 0)
+            
+            is_relevant = False
+            for keyword in task_keywords:
+                if keyword.lower() in subject.lower() or keyword.lower() in fact.lower():
+                    is_relevant = True
+                    break
+            
+            if is_relevant:
+                relevant_knowledge.append({
+                    "subject": subject,
+                    "fact": fact,
+                    "confidence": confidence,
+                    "source": data.get("source", "unknown")
+                })
+        
+        relevant_knowledge.sort(key=lambda x: x["confidence"], reverse=True)
+        return relevant_knowledge[:limit]
+        
+    except Exception as e:
+        print(f"関連知識取得エラー: {str(e)}")
+        return []
+
+def apply_success_patterns(task_description):
+    """成功パターンを適用"""
+    try:
+        import json
+        import os
+        
+        knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
+        if not os.path.exists(knowledge_db_path):
+            return []
+            
+        with open(knowledge_db_path, 'r', encoding='utf-8') as f:
+            knowledge_db = json.load(f)
+            
+        success_patterns = []
+        
+        for subject, data in knowledge_db.items():
+            if "[success_factor]" in subject:
+                success_patterns.append({
+                    "pattern": data.get("fact", ""),
+                    "confidence": data.get("confidence", 0)
+                })
+        
+        if success_patterns:
+            print("適用可能な成功パターン:")
+            for pattern in success_patterns[:3]:
+                print(f"- {pattern['pattern']} (確信度: {pattern['confidence']})")
+        
+        return success_patterns
+        
+    except Exception as e:
+        print(f"成功パターン適用エラー: {str(e)}")
+        return []
+
+def avoid_failure_patterns(task_description):
+    """失敗パターンを回避"""
+    try:
+        import json
+        import os
+        
+        knowledge_db_path = "./workspace/persistent_thinking/knowledge_db.json"
+        if not os.path.exists(knowledge_db_path):
+            return []
+            
+        with open(knowledge_db_path, 'r', encoding='utf-8') as f:
+            knowledge_db = json.load(f)
+            
+        failure_patterns = []
+        
+        for subject, data in knowledge_db.items():
+            if "[failure_factor]" in subject:
+                failure_patterns.append({
+                    "pattern": data.get("fact", ""),
+                    "confidence": data.get("confidence", 0)
+                })
+        
+        if failure_patterns:
+            print("回避すべき失敗パターン:")
+            for pattern in failure_patterns[:3]:
+                print(f"- {pattern['pattern']} (確信度: {pattern['confidence']})")
+        
+        return failure_patterns
+        
+    except Exception as e:
+        print(f"失敗パターン回避エラー: {str(e)}")
+        return []
