@@ -9,7 +9,7 @@ import requests
 class LLM:
     def __init__(self, 
                  api_key: Optional[str] = None, 
-                 model: str = "gpt-4-turbo", 
+                 model: str = "gpt-4o-mini", 
                  temperature: float = 0.7,
                  provider: str = "openai"):
         self.model = model

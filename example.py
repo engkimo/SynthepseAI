@@ -24,7 +24,7 @@ def setup_agent_system(workspace_dir="./workspace"):
     # LLMの初期化
     llm = LLM(
         api_key=os.getenv("OPENAI_API_KEY"),
-        model=os.getenv("OPENAI_MODEL", "gpt-4-turbo")
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     )
     
     # タスクデータベースの初期化（SQLiteに変更）

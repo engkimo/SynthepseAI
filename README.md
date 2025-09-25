@@ -63,8 +63,8 @@ Create a `.env` file and include the following:
 ```dotenv
 # OpenAI APIキー設定 (https://platform.openai.com/apikeys からAPIキーを取得)
 OPENAI_API_KEY=your_openai_api_key
-# 使用するOpenAIモデル（デフォルト: gpt-4-turbo）
-OPENAI_MODEL=gpt-4-turbo
+# 使用するOpenAIモデル（デフォルト: gpt-4o-mini）
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 If you don't set an API key, the system will automatically run in mock mode, which simulates API responses for development and testing purposes.

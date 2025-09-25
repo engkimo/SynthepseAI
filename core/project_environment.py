@@ -222,14 +222,21 @@ class ProjectEnvironment:
                 
         print(f"Installing package '{package_name}' in project environment...")
         
-        # 複数の方法でインストールを試行
+        # 複数の方法でインストールを試行（venv優先、固定バージョンパスを使わない）
         methods = [
-            # 方法1: 仮想環境のpipを使用
+            # 方法1: 仮想環境のPythonから pip を呼び出す
+            lambda: subprocess.run(
+                [self.get_python_path(), "-m", "pip", "install", "--upgrade", package_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            ).returncode == 0,
+            # 方法2: 仮想環境のpipを直接使用
             lambda: self._install_with_venv_pip(package_name),
-            # 方法2: システムのPythonでpipを使用
+            # 方法3: システムのPythonでvenvのsite-packagesにインストール
             lambda: self._install_with_system_python(package_name),
-            # 方法3: コマンドとして直接実行
-            lambda: self._install_with_direct_command(package_name)
+            # 方法4: シェルのpipコマンドで直接インストール
+            lambda: self._install_with_direct_command(package_name),
         ]
         
         for i, method in enumerate(methods):
@@ -266,30 +273,60 @@ class ProjectEnvironment:
         
         return False
 
+    def _get_venv_site_packages(self) -> str:
+        """現在の仮想環境のsite-packagesディレクトリを検出/推定して返す"""
+        # 仮想環境のPythonから正式なsite-packagesを取得
+        try:
+            python_path = self.get_python_path()
+            code = (
+                "import site,sys;"
+                "paths = []\n"
+                "paths += getattr(site, 'getsitepackages', lambda: [])() or []\n"
+                "up = getattr(site, 'getusersitepackages', lambda: None)()\n"
+                "print((paths[0] if paths else (up or '')))"
+            )
+            result = subprocess.run(
+                [python_path, "-c", code],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            detected = result.stdout.strip()
+            if detected and os.path.isabs(detected):
+                return detected
+        except Exception:
+            pass
+
+        # フォールバック: OS毎の慣例パス
+        if os.name == 'nt':  # Windows
+            return os.path.join(self.venv_dir, "Lib", "site-packages")
+        ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        return os.path.join(self.venv_dir, "lib", ver, "site-packages")
+
     def _install_with_system_python(self, package_name: str) -> bool:
-        """システムのPythonを使用してインストール"""
-        python_exe = sys.executable
-        cmd = [python_exe, "-m", "pip", "install", "--target", 
-            os.path.join(self.venv_dir, "lib", "python3.13", "site-packages"), 
-            package_name]
-        
+        """システムPythonで、venvのsite-packagesに直接インストール"""
+        target_dir = self._get_venv_site_packages()
+        os.makedirs(target_dir, exist_ok=True)
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--target", target_dir, package_name]
         result = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
         return result.returncode == 0
 
     def _install_with_direct_command(self, package_name: str) -> bool:
-        """直接コマンドを実行してインストール"""
-        cmd = f"pip install --target {os.path.join(self.venv_dir, 'lib', 'python3.13', 'site-packages')} {package_name}"
+        """シェルのpipコマンドを使ってvenvのsite-packagesへインストール"""
+        target_dir = self._get_venv_site_packages()
+        os.makedirs(target_dir, exist_ok=True)
+        cmd = f"pip install --upgrade --target {target_dir} {package_name}"
         result = subprocess.run(
             cmd,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
         return result.returncode == 0
     
