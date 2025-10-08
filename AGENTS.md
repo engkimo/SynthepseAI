@@ -9,8 +9,9 @@
 ## Build, Test, and Development Commands
 - Create env: `python -m venv venv && source venv/bin/activate`
 - Install deps: `pip install -r requirements.txt`
-- Configure: `cp .env.example .env` then set `OPENAI_API_KEY` and related vars.
+- Configure: `cp .env.example .env` then set `OPENAI_API_KEY` (or see `README_OPENROUTER.md`).
 - Optional (GraphRAG): `docker-compose up -d`
+- If DGL errors occur: `source set_env.sh`
 - Run locally: `python main.py --goal "..." [--workspace ./workspace]`
 - Examples: `python example.py`
 - Tests: `python -m unittest discover -s tests -p "test_*.py"` or `python test_enhanced_knowledge_sync.py`
@@ -29,12 +30,15 @@
 
 ## Commit & Pull Request Guidelines
 - Commits: small, descriptive, present imperative (e.g., `fix:`, `feat:`, `chore(security):`). Reference issues (`#123`).
-- PRs must include: what/why, test plan and outputs, screenshots/logs when relevant, and updated docs/config samples.
+- PRs must include: what/why, test plan and outputs, screenshots/logs when relevant, and updated docs/config samples. Follow `PR_DESCRIPTION.md` for structure.
 - Use `.github` workflows to manage labels/milestones when needed; see `docs/10-github-workflow.md`.
 - For larger changes, include an architecture note in `docs/`.
+
+## Agent-Specific Notes
+- Add new tools under `core/tools/` and register them with the relevant agent.
+- Do not commit generated files under `workspace/`.
 
 ## Security & Configuration Tips
 - Never commit secrets. Use `.env` (git-ignored); update `.env.example` when adding variables.
 - Keep `config.json` free of private tokens; prefer environment variables.
 - If DGL compatibility issues occur, run `source set_env.sh`.
-
