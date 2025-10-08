@@ -52,7 +52,7 @@ def main():
     # Initialize components
     if llm_provider == 'openai':
         api_key = openai_api_key
-        model = config.get('model', 'gpt-4-turbo')
+        model = config.get('model', 'gpt-4o-mini')
     elif llm_provider == 'openrouter':
         api_key = openrouter_api_key
         model = config.get('model', 'anthropic/claude-3-7-sonnet')

@@ -1,7 +1,7 @@
 {
     "openai_api_key": "",
     "openrouter_api_key": "",
-    "model": "gpt-4o",
+    "model": "gpt-4o-mini",
     "temperature": 0.7,
     "workspace": "./workspace",
     "llm_provider": "openai",
@@ -13,7 +13,7 @@
         "name": "リサーチャー",
         "role": "研究者",
         "expertise": ["データ分析", "情報検索", "文献調査"],
-        "model_name": "gpt-3.5-turbo",
+        "model_name": "gpt-4o-mini",
         "temperature": 0.5,
         "provider": "openai"
       },
@@ -21,7 +21,7 @@
         "name": "クリティカルシンカー",
         "role": "批判的思考家",
         "expertise": ["論理分析", "仮説検証", "反論提示"],
-        "model_name": "gpt-3.5-turbo",
+        "model_name": "gpt-4o-mini",
         "temperature": 0.7,
         "provider": "openai"
       },
@@ -29,7 +29,7 @@
         "name": "クリエイティブソルバー",
         "role": "創造的問題解決者",
         "expertise": ["アイデア生成", "創造的思考", "解決策提案"],
-        "model_name": "gpt-3.5-turbo",
+        "model_name": "gpt-4o-mini",
         "temperature": 0.9,
         "provider": "openai"
       }
