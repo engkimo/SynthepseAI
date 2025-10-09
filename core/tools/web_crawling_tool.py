@@ -1,9 +1,22 @@
 from typing import Dict, Any, Optional
 import os
-import requests
 import json
 import logging
-from bs4 import BeautifulSoup
+
+# 外部依存を安全にインポート（未導入でも動作継続）
+try:
+    import requests  # type: ignore
+    _REQUESTS_AVAILABLE = True
+except Exception:
+    requests = None  # type: ignore
+    _REQUESTS_AVAILABLE = False
+
+try:
+    from bs4 import BeautifulSoup  # type: ignore
+    _BS4_AVAILABLE = True
+except Exception:
+    BeautifulSoup = None  # type: ignore
+    _BS4_AVAILABLE = False
 
 from .base_tool import BaseTool, ToolResult
 
@@ -21,8 +34,9 @@ class WebCrawlingTool(BaseTool):
         self.tavily_api_key = tavily_api_key or os.environ.get("TAVILY_API_KEY")
         self.firecrawl_api_key = firecrawl_api_key or os.environ.get("FIRECRAWL_API_KEY")
         self.max_results = max_results
-        self.session = requests.Session()
-        self.mock_mode = not (self.tavily_api_key or self.firecrawl_api_key)
+        self.session = requests.Session() if _REQUESTS_AVAILABLE else None
+        # リクエストライブラリが無い場合は強制モック
+        self.mock_mode = (not _REQUESTS_AVAILABLE) or not (self.tavily_api_key or self.firecrawl_api_key)
         
     def execute(self, query=None, url=None, search_depth="basic", **kwargs) -> ToolResult:
         """
@@ -47,9 +61,14 @@ class WebCrawlingTool(BaseTool):
                 if not self.tavily_api_key and not self.firecrawl_api_key:
                     return ToolResult(False, None, "有効なAPIキーが設定されていません。TAVILY_API_KEYまたはFIRECRAWL_API_KEYを環境変数に設定してください。")
                 
+                # 優先: Tavily -> 失敗時は Firecrawl にフォールバック
                 if self.tavily_api_key:
                     try:
-                        return self._search_with_tavily(query, search_depth)
+                        tavily_result = self._search_with_tavily(query, search_depth)
+                        if isinstance(tavily_result, ToolResult) and tavily_result.success:
+                            return tavily_result
+                        else:
+                            logging.warning("Tavily検索が成功しませんでした。Firecrawlにフォールバックします。")
                     except Exception as e:
                         logging.warning(f"Tavily検索に失敗しました: {str(e)}。Firecrawlにフォールバックします。")
                 
@@ -69,54 +88,37 @@ class WebCrawlingTool(BaseTool):
         """TavilyのAPIを使用して検索"""
         try:
             try:
-                from tavily import TavilyClient
+                from tavily import TavilyClient  # type: ignore
                 client = TavilyClient(api_key=self.tavily_api_key)
-                
                 search_params = {
                     "query": query,
                     "search_depth": search_depth,
                     "max_results": self.max_results,
-                    "include_domains": [],  # 特定のドメインに限定する場合
-                    "exclude_domains": [],  # 特定のドメインを除外する場合
+                    "include_domains": [],
+                    "exclude_domains": [],
                 }
-                
                 response = client.search(**search_params)
                 print(f"Tavily検索成功: {query}")
             except (ImportError, AttributeError) as e:
-                print(f"最新のTavily SDKが利用できません: {str(e)}。レガシーAPIを試行します。")
+                print(f"Tavily SDK未利用。フォールバック手段を試行: {str(e)}")
                 try:
-                    import tavily
+                    import tavily  # type: ignore
                     tavily.api_key = self.tavily_api_key
-                    
-                    search_params = {
-                        "query": query,
-                        "search_depth": search_depth,
-                        "max_results": self.max_results,
-                    }
-                    
-                    response = tavily.search(**search_params)
+                    response = tavily.search(query=query, search_depth=search_depth, max_results=self.max_results)
                     print(f"Tavilyレガシー検索成功: {query}")
-                except AttributeError:
-                    import requests
-                    
+                except Exception:
+                    if not _REQUESTS_AVAILABLE:
+                        return ToolResult(False, None, "requests が無いため Tavily API を呼び出せません")
                     api_url = "https://api.tavily.com/search"
-                    headers = {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {self.tavily_api_key}"
-                    }
-                    
-                    data = {
-                        "query": query,
-                        "search_depth": search_depth,
-                        "max_results": self.max_results
-                    }
-                    
+                    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.tavily_api_key}"}
+                    data = {"query": query, "search_depth": search_depth, "max_results": self.max_results}
                     response_raw = requests.post(api_url, headers=headers, json=data)
                     response_raw.raise_for_status()
                     response = response_raw.json()
                     print(f"Tavily直接API呼び出し成功: {query}")
         except ImportError:
-            return ToolResult(False, None, "tavily-pythonパッケージがインストールされていません。pip install tavily-python を実行してください。")
+            # tavilyモジュールが無い場合でも、上の分岐でrequests直呼び出しを試みているため、ここに来ない想定
+            return ToolResult(False, None, "Tavily SDKが見つかりませんでした")
         except Exception as e:
             return ToolResult(False, None, f"Tavily検索エラー: {str(e)}")
         
@@ -139,6 +141,9 @@ class WebCrawlingTool(BaseTool):
         
     def _search_with_firecrawl(self, query):
         """FirecrawlのAPIを使用して検索"""
+        if not _REQUESTS_AVAILABLE:
+            return ToolResult(False, None, "requests が利用できないため Firecrawl を呼び出せません。")
+
         api_url = "https://api.firecrawl.dev/search"
         
         headers = {
@@ -176,9 +181,21 @@ class WebCrawlingTool(BaseTool):
             print(f"Web取得ツールはモックモードで動作中です。URL: {url}")
             return self._generate_mock_url_content(url)
             
+        if not _REQUESTS_AVAILABLE or self.session is None:
+            return ToolResult(False, None, "requests が利用できないためURL取得を実行できません。")
+
         response = self.session.get(url, timeout=10)
         response.raise_for_status()
         
+        if not _BS4_AVAILABLE:
+            # BeautifulSoup がなければ素のHTMLを返却
+            return ToolResult(True, {
+                "url": url,
+                "title": "",
+                "content": response.text[:2000],
+                "html": response.text
+            })
+
         soup = BeautifulSoup(response.text, 'html.parser')
         
         title = soup.title.string if soup.title else ""

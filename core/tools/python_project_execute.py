@@ -35,6 +35,15 @@ class PythonProjectExecuteTool(BaseTool):
         
         # プロジェクト環境のキャッシュ
         self.environments = {}
+
+    def _apply_template(self, template: str, imports: str, main_code: str, extra: dict | None = None) -> str:
+        """{imports}, {main_code} と任意の追加プレースホルダを波括弧置換で安全に適用"""
+        code = template.replace("{imports}", imports)
+        code = code.replace("{main_code}", main_code)
+        if extra:
+            for k, v in extra.items():
+                code = code.replace(f"{{{k}}}", str(v))
+        return code
     
     def execute(self, command: str, **kwargs) -> ToolResult:
         """ツールコマンドを実行"""
@@ -223,10 +232,14 @@ task_info = {{
                     "plan_id": task.plan_id if task.plan_id else ""
                 }
                 
-                from string import Template
-                t = Template(safe_template)
-                raw_code = t.safe_substitute(format_dict)
-                
+                # {imports}/{main_code}/{task_id}/{description}/{plan_id} を置換
+                raw_code = self._apply_template(
+                    safe_template,
+                    imports_str,
+                    indented_code,
+                    {"task_id": task.id, "description": task.description, "plan_id": task.plan_id or ""}
+                )
+
                 for field in positional_fields:
                     raw_code = raw_code.replace(f"___POS_{field}___", f"{{{field}}}")
                 

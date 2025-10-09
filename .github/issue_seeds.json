@@ -7,8 +7,8 @@
     "assignees": []
   },
   {
-    "title": "Adopt gpt-4o-mini as default model",
-    "body": "Update defaults and config examples to gpt-4o-mini. See docs/02-improvements.md (Item 2).",
+    "title": "Adopt gpt-5 as default model",
+    "body": "Update defaults and config examples to gpt-5. See docs/02-improvements.md (Item 2).",
     "labels": ["type:docs", "type:enhancement"],
     "milestone": "M1",
     "assignees": []

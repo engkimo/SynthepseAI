@@ -1,15 +1,43 @@
 from typing import Dict, List, Any, Optional
 import json
 import os
-import openai
-from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential
-import requests
+try:
+    from tenacity import retry, stop_after_attempt, wait_exponential
+except Exception:
+    # tenacity未導入環境用のフォールバック（リトライ無し）
+    def retry(*args, **kwargs):
+        def wrapper(fn):
+            return fn
+        return wrapper
+    def stop_after_attempt(*args, **kwargs):
+        return None
+    def wait_exponential(*args, **kwargs):
+        return None
+try:
+    import requests  # type: ignore
+    _REQUESTS_AVAILABLE = True
+    _REQUESTS_EXC = (requests.RequestException,)
+except Exception:
+    requests = None  # type: ignore
+    _REQUESTS_AVAILABLE = False
+    class _DummyRequestsException(Exception):
+        pass
+    _REQUESTS_EXC = (_DummyRequestsException,)
+
+# openai SDK が未インストール環境でも動作するように安全にインポート
+try:
+    import openai  # type: ignore
+    from openai import OpenAI  # type: ignore
+    _OPENAI_AVAILABLE = True
+except Exception:
+    openai = None  # type: ignore
+    OpenAI = None  # type: ignore
+    _OPENAI_AVAILABLE = False
 
 class LLM:
     def __init__(self, 
                  api_key: Optional[str] = None, 
-                 model: str = "gpt-4o-mini", 
+                 model: str = "gpt-5", 
                  temperature: float = 0.7,
                  provider: str = "openai"):
         self.model = model
@@ -35,9 +63,34 @@ class LLM:
             openai_api_key = "sk-mock-key"
         
         if provider == "openai":
-            self.client = OpenAI(api_key=openai_api_key)
+            if _OPENAI_AVAILABLE:
+                self.client = OpenAI(api_key=openai_api_key)  # type: ignore
+            else:
+                # SDKがない場合もモックモードで継続
+                print("openai SDKが見つかりません。モックモードで動作します。")
+                self.mock_mode = True
+                self.client = None  # type: ignore
         else:
             self.api_key = openai_api_key
+
+    def _is_gpt5_model(self) -> bool:
+        try:
+            return isinstance(self.model, str) and self.model.lower().startswith("gpt-5")
+        except Exception:
+            return False
+
+    def _openai_chat(self, messages):
+        """OpenAI Chat API call with model-specific parameter handling."""
+        params = {
+            "model": self.model,
+            "messages": messages,
+        }
+        # Some models (e.g., gpt-5) only allow default temperature (1)
+        if not self._is_gpt5_model():
+            params["temperature"] = self.temperature
+        else:
+            params["temperature"] = 1
+        return self.client.chat.completions.create(**params)
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def generate_text(self, prompt: str) -> str:
@@ -66,11 +119,7 @@ class LLM:
                 return "APIキーが無効なため、モックレスポンスを返します。有効なAPIキーを設定してください。"
             
             if self.provider == "openai":
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=self.temperature
-                )
+                response = self._openai_chat(messages)
                 return response.choices[0].message.content
             elif self.provider == "openrouter":
                 headers = {
@@ -96,16 +145,25 @@ class LLM:
                     raise ValueError(f"OpenRouter API returned error: {response.text}")
                     
                 return response.json()["choices"][0]["message"]["content"]
-        except openai.AuthenticationError as e:
-            print(f"認証エラー: {str(e)}")
-            self.mock_mode = True  # 認証エラーが発生した場合、モックモードに切り替え
-            return "APIキー認証エラーが発生しました。モックモードに切り替えます。"
         except Exception as e:
-            print(f"Error generating text: {str(e)}")
-            if "auth" in str(e).lower() or "api key" in str(e).lower():
+            # openai SDK があればエラー種別を判断
+            if _OPENAI_AVAILABLE and isinstance(e, getattr(openai, 'AuthenticationError', Exception)):
+                print(f"認証エラー: {str(e)}")
                 self.mock_mode = True
-                return "APIエラーが発生しました。モックモードに切り替えます。"
-            raise
+                return "APIキー認証エラーが発生しました。モックモードに切り替えます。"
+            
+            # ネットワーク/接続系
+            if isinstance(e, _REQUESTS_EXC + (ConnectionError, TimeoutError)) or (
+                _OPENAI_AVAILABLE and isinstance(e, getattr(openai, 'APIConnectionError', Exception))
+            ):
+                print(f"接続エラー: {str(e)} — モックモードへ切替")
+                self.mock_mode = True
+                return "ネットワークまたは接続エラーのため、モックモードに切り替えました。"
+            
+            # その他の一般例外
+            print(f"Error generating text: {str(e)} — モックモードへ切替")
+            self.mock_mode = True
+            return "API呼び出し中にエラーが発生したため、モックモードに切り替えました。"
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def generate_code(self, description: str) -> str:
@@ -244,11 +302,7 @@ except Exception as e:
             """.strip()
             
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2  # Lower temperature for more deterministic code generation
-            )
+            response = self._openai_chat([{"role": "user", "content": prompt}])
             
             code = response.choices[0].message.content
             
@@ -296,11 +350,7 @@ except Exception as e:
             """.strip()
             
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2
-            )
+            response = self._openai_chat([{"role": "user", "content": prompt}])
             
             fixed_code = response.choices[0].message.content
             
@@ -344,14 +394,10 @@ except Exception as e:
                 以前の事実を新しい事実に置き換えてください。
                 """
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "あなたは新しい知識を学習できるアシスタントです。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2
-            )
+            response = self._openai_chat([
+                {"role": "system", "content": "あなたは新しい知識を学習できるアシスタントです。"},
+                {"role": "user", "content": prompt}
+            ])
             
             confirmation = response.choices[0].message.content
             success = "理解" in confirmation or "学習" in confirmation or "更新" in confirmation

@@ -625,33 +625,9 @@ class ProjectEnvironment:
                     print("Successfully formatted code with black")
                 else:
                     print(f"Black formatter warning: {result.stderr}")
-                    
-                    # Blackが失敗した場合、インデントの基本的な修正を試みる
-                    lines = code.splitlines()
-                    fixed_lines = []
-                    indent_level = 0
-                    
-                    for line in lines:
-                        stripped = line.strip()
-                        if not stripped:  # 空行
-                            fixed_lines.append("")
-                            continue
-                            
-                        # ブロック開始の検出
-                        if stripped.endswith(':'):
-                            fixed_lines.append('    ' * indent_level + stripped)
-                            indent_level += 1
-                        # ブロック終了の可能性（行頭がキーワードで始まる場合）
-                        elif any(stripped.startswith(kw) for kw in ['def ', 'class ', 'if ', 'else:', 'elif ', 'for ', 'while ', 'try:', 'except ', 'finally:', 'with ']):
-                            if indent_level > 0 and not stripped.startswith('    '):
-                                indent_level -= 1
-                            fixed_lines.append('    ' * indent_level + stripped)
-                        else:
-                            fixed_lines.append('    ' * indent_level + stripped)
-                    
-                    # 修正したコードを書き込む
+                    # フォーマッターが使用できない/失敗した場合は、そのままのコードを保持（安易なインデント修正は行わない）
                     with open(temp_path, 'w') as f:
-                        f.write('\n'.join(fixed_lines))
+                        f.write(code)
             except Exception as e:
                 print(f"Error using black formatter: {str(e)}")
             

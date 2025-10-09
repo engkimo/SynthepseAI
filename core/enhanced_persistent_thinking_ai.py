@@ -112,7 +112,7 @@ class EnhancedPersistentThinkingAI:
                         agent = DiscussionAgent(**agent_config)
                         self.multi_agent_discussion.add_agent(agent)
             except ImportError:
-                print("マルチエージェント討論機能を有効にするには langchain をインストールしてください")
+                print("マルチエージェント討論機能を有効にするには langchain と langchain-openai をインストールしてください")
                 self.enable_multi_agent = False
         
         self.knowledge_db_path = knowledge_db_path

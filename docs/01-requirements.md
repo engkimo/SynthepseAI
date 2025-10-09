@@ -28,7 +28,7 @@
 
 ## 実行・設定
 - 実行: `python main.py --goal "..."`、作業ディレクトリは `--workspace`。
-- モデル: 既定は OpenAI `gpt-4o-mini`（OpenRouter は `claude-3-7-sonnet` 推奨）。
+- モデル: 既定は OpenAI `gpt-5`（OpenRouter は `claude-3-7-sonnet` 推奨）。
 - Weaviate: GraphRAG 利用時のみ Docker で 8080 起動。
 
 ## 既知の制約

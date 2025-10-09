@@ -9,8 +9,8 @@
 
 ## 2. OpenAI 既定モデルが旧式
 - 症状: `gpt-4-turbo` 既定などの古い表記が残っている。
-- 対応: 既定を `gpt-4o-mini` に更新。`config.json.example` / `.env.example` / README の記述整合性を確保。
-- 受け入れ基準: 既定動作時に `gpt-4o-mini` が選択されること。
+- 対応: 既定を `gpt-5` に更新。`config.json.example` / `.env.example` / README の記述整合性を確保。
+- 受け入れ基準: 既定動作時に `gpt-5` が選択されること。
 
 ## 3. 依存解決の堅牢化
 - 症状: venv の pip が見つからないケースや OS 差異で失敗。

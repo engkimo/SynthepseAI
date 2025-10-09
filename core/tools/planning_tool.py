@@ -33,6 +33,22 @@ class PlanningTool(BaseTool):
             "template_info": {"type": "object"},  # 学習ベースのテンプレート情報
             "modules": {"type": "array"}  # 再利用可能なモジュール情報
         }
+
+    def _apply_template(self, template: str, imports: str, main_code: str, extra: dict | None = None) -> str:
+        """
+        テンプレート内の {imports} と {main_code} を安全に置換。
+        string.Template は使用せず、波括弧の単純置換のみ行うことで他の波括弧（f文字列等）に干渉しない。
+        """
+        code = template.replace("{imports}", imports)
+        code = code.replace("{main_code}", main_code)
+        if extra:
+            for k, v in extra.items():
+                code = code.replace(f"{{{k}}}", str(v))
+        return code
+
+    def _indent_block(self, code: str, spaces: int = 8) -> str:
+        indent = " " * spaces
+        return "\n".join(indent + line if line.strip() != "" else "" for line in code.splitlines())
     
     def execute(self, command: str, **kwargs) -> ToolResult:
         """プランニングツールを実行"""
@@ -332,16 +348,14 @@ class PlanningTool(BaseTool):
 }}
 """
             
-            mock_main_code = self.llm.generate_code(f"タスク: {task.description}")
-            
-            # インポート文を抽出
-            import re
-            import_pattern = r'import\s+[\w.]+|from\s+[\w.]+\s+import\s+[\w.,\s]+'
-            imports = re.findall(import_pattern, mock_main_code)
-            imports_text = "\n".join(imports) if imports else "# No additional imports"
-            
-            # メインコードからインポート文を削除
-            main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
+            # ネットワークや外部依存が無い環境でも安定動作する最小コードを使用
+            imports_text = "# No additional imports"
+            main_code_cleaned = (
+                f"# Mock execution for task\n"
+                f"log_thought(\"task_mock\", {{\"task\": \"{task.description}\"}})\n"
+                f"add_insight(\"モック: {task.description} の初期分析\", 0.7)\n"
+                f"result = \"モック実行: {task.description} が完了しました\"\n"
+            )
             
             # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
@@ -350,10 +364,14 @@ class PlanningTool(BaseTool):
             }
             
             try:
-                # 安全なフォーマット処理
-                from string import Template
-                t = Template(template)
-                full_code = task_info_code + t.safe_substitute(format_dict)
+                # {imports}/{main_code} のみを置換
+                filled = self._apply_template(
+                    template,
+                    imports_text,
+                    self._indent_block(main_code_cleaned, 8),
+                    {"task_id": task.id, "description": task.description, "plan_id": task.plan_id or ""}
+                )
+                full_code = task_info_code + filled
                 return full_code
             except Exception as e:
                 print(f"Error formatting template in mock mode: {str(e)}")
@@ -562,24 +580,14 @@ class PlanningTool(BaseTool):
         }
         
         try:
-            # 安全なフォーマット処理
-            indented_main_code = "    " + main_code_cleaned.replace("\n", "\n    ")
-            run_task_function = f"""
-def run_task():
-    \"\"\"
-    Execute the task and return the result
-    \"\"\"
-{indented_main_code}
-    return result
-"""
-            format_dict = {
-                "imports": imports_text,
-                "main_code": run_task_function,
-            }
-            
-            from string import Template
-            t = Template(template)
-            full_code = task_info_code + t.safe_substitute(format_dict)
+            # テンプレートの run_task() 内に main_code をインデント挿入
+            filled = self._apply_template(
+                template,
+                imports_text,
+                self._indent_block(main_code_cleaned, 8),
+                {"task_id": task.id, "description": task.description, "plan_id": task.plan_id or ""}
+            )
+            full_code = task_info_code + filled
             return full_code
         except Exception as e:
             print(f"Error formatting template: {str(e)}")
@@ -607,7 +615,14 @@ def main():
 if __name__ == "__main__":
     result = main()
 """
-            return task_info_code + fallback_template.format(**format_dict)
+            # フォールバックでも手動置換を使用
+            filled_fallback = self._apply_template(
+                fallback_template,
+                imports_text,
+                self._indent_block(main_code_cleaned, 8),
+                {"task_id": task.id, "description": task.description, "plan_id": task.plan_id or ""}
+            )
+            return task_info_code + filled_fallback
     
     def generate_python_script_with_modules(self, task, modules: List[Dict]) -> str:
         """再利用可能なモジュールを活用してPythonスクリプトを生成"""

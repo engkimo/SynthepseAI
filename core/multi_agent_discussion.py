@@ -4,13 +4,17 @@ import json
 import time
 import logging
 
-from langchain.agents import Tool
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.chains.conversation.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from pydantic.v1 import BaseModel, Field
-from langchain.chat_models.base import BaseChatModel
+
+# ConversationBufferMemory のインポート互換対応（LangChainのバージョン差吸収）
+try:
+    from langchain.memory import ConversationBufferMemory  # >=0.2
+except Exception:
+    try:
+        from langchain.chains.conversation.memory import ConversationBufferMemory  # 旧パス
+    except Exception:
+        ConversationBufferMemory = None  # type: ignore
 
 class DiscussionAgent:
     """特定の役割を持つディスカッションエージェント"""
@@ -43,6 +47,11 @@ class DiscussionAgent:
         if not api_key:
             api_key = os.environ.get("OPENAI_API_KEY", "dummy_key_for_testing")
         
+        # gpt-5 系モデルは温度既定(1)のみサポートするため強制上書き
+        if isinstance(model_name, str) and model_name.lower().startswith("gpt-5") and temperature != 1:
+            print("gpt-5 family detected for multi-agent; forcing temperature=1")
+            temperature = 1
+
         self.llm = ChatOpenAI(
             model_name=model_name,
             temperature=temperature,
@@ -54,7 +63,8 @@ class DiscussionAgent:
             openai_api_base="https://openrouter.ai/api/v1"
         )
         
-        self.memory = ConversationBufferMemory(return_messages=True)
+        # メモリは未使用だが、存在すれば初期化
+        self.memory = ConversationBufferMemory(return_messages=True) if ConversationBufferMemory else None
         
         self.prompt = PromptTemplate.from_template(
             """あなたは {name} という名前の {role} です。
