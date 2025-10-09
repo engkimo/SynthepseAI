@@ -144,6 +144,53 @@ conclusions = []
 KNOWLEDGE_DB_PATH = "./workspace/persistent_thinking/knowledge_db.json"
 THINKING_LOG_PATH = "./workspace/persistent_thinking/thinking_log.jsonl"
 
+# 成果物の出力先（プランごとのディレクトリ）
+ARTIFACTS_BASE = "./workspace/artifacts"
+ARTIFACTS_DIR = os.path.join(ARTIFACTS_BASE, task_info.get("plan_id", "default"))
+
+def ensure_artifacts_dir():
+    try:
+        os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+    except Exception:
+        pass
+
+def save_text_artifact(filename: str, content: str, mode: str = "a") -> str:
+    try:
+        ensure_artifacts_dir()
+        path = os.path.join(ARTIFACTS_DIR, filename)
+        with open(path, mode, encoding="utf-8") as f:
+            f.write(content)
+            if not content.endswith("\n"):
+                f.write("\n")
+        return path
+    except Exception:
+        return ""
+
+def append_report(section_title: str, body: str):
+    ts = datetime.datetime.now().isoformat()
+    md = f"\n\n## {section_title} ({ts})\n\n{body}\n"
+    save_text_artifact("report.md", md, mode="a")
+
+def save_placeholder_plot():
+    """matplotlibが利用可能なら簡易プロットを成果物として保存"""
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        ensure_artifacts_dir()
+        x = np.arange(5)
+        y = np.linspace(1, 5, 5)
+        plt.figure(figsize=(6, 4))
+        plt.bar(x, y, color="#5B8FF9")
+        plt.title("Placeholder Plot")
+        plt.tight_layout()
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(ARTIFACTS_DIR, f"plot_{ts}.png")
+        plt.savefig(path)
+        plt.close()
+        return path
+    except Exception:
+        return ""
+
 def load_knowledge_db():
     try:
         if os.path.exists(KNOWLEDGE_DB_PATH):
@@ -523,6 +570,18 @@ def main():
                 print("知識ベースへの統合に成功しました")
             else:
                 print("知識ベースへの統合に失敗しました")
+            # 成果物として簡易レポートを追記
+            try:
+                ensure_artifacts_dir()
+                preview = str(task_result)
+                if len(preview) > 1200:
+                    preview = preview[:1200] + "..."
+                body = f"### Task\n- Description: {task_description}\n\n### Result Preview\n```
+{preview}
+```\n"
+                append_report("Task Result", body)
+            except Exception:
+                pass
         else:
             print("タスク結果がないため知識ベースに統合しません")
         

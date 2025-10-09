@@ -7,7 +7,7 @@
     "llm_provider": "openai",
     "local_model_name": "microsoft/phi-2",
     "device": "cpu",
-    "enable_multi_agent": true,
+    "enable_multi_agent": false,
     "specialized_agents": [
       {
         "name": "リサーチャー",

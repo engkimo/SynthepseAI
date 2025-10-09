@@ -36,6 +36,28 @@ class PythonProjectExecuteTool(BaseTool):
         # プロジェクト環境のキャッシュ
         self.environments = {}
 
+    def _sanitize_generated_code(self, code: str) -> str:
+        """
+        生成コードの最低限の健全化を行う。
+        - 不正な疑似モジュール（*_mod）を import している行を除去
+        - LLMが生成した壊れた改行インポート（例: "import\n    np_mod"）を修正
+        """
+        import re
+        lines = code.splitlines()
+        cleaned = []
+        # 1) 壊れたインポートの単純修正
+        code = re.sub(r"import\s*\n\s+([A-Za-z_]\w*_mod)\b", r"import \1", code)
+        # 2) 行ごとのフィルタ処理
+        for line in code.splitlines():
+            if re.match(r"^\s*import\s+[A-Za-z_]\w*_mod(\s+as\s+\w+)?\s*$", line):
+                # *_mod の直接importは破棄（後段の_safe_importを利用）
+                continue
+            if re.match(r"^\s*from\s+[A-Za-z_]\w*_mod\s+import\b.*$", line):
+                # *_mod からの import も破棄
+                continue
+            cleaned.append(line)
+        return "\n".join(cleaned)
+
     def _apply_template(self, template: str, imports: str, main_code: str, extra: dict | None = None) -> str:
         """{imports}, {main_code} と任意の追加プレースホルダを波括弧置換で安全に適用"""
         code = template.replace("{imports}", imports)
@@ -441,7 +463,8 @@ if __name__ == "__main__":
             })
         
         # コードの先頭にタスク情報を追加 - task_info_code は不要（テンプレートに含まれている）
-        full_code = formatted_code
+        # 保存前に最低限のサニタイズを実施
+        full_code = self._sanitize_generated_code(formatted_code)
         
         # スクリプトを保存（自動フォーマット処理が適用される）
         print(f"Formatting and saving task script: {script_name}")

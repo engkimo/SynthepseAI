@@ -564,4 +564,13 @@ class AutoPlanAgent(ToolAgent):
             except Exception as e:
                 print(f"Error getting module analytics: {str(e)}")
         
+        # 成果物としてプラン要約を保存
+        try:
+            import os
+            artifacts_dir = os.path.join(self.workspace_dir, "artifacts", plan_id)
+            os.makedirs(artifacts_dir, exist_ok=True)
+            with open(os.path.join(artifacts_dir, "plan_summary.txt"), "w", encoding="utf-8") as f:
+                f.write(summary)
+        except Exception as e:
+            print(f"Failed to write plan summary artifact: {str(e)}")
         return summary
