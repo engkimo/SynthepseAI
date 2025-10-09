@@ -41,13 +41,21 @@ class PythonProjectExecuteTool(BaseTool):
         生成コードの最低限の健全化を行う。
         - 不正な疑似モジュール（*_mod）を import している行を除去
         - LLMが生成した壊れた改行インポート（例: "import\n    np_mod"）を修正
+        - テンプレ由来のメタ断片（"task_id": 等の裸キー行）を除去
+        - 明らかに無効/未知の単語インポート（例: `import to`, `import duplicates`）を除去
         """
         import re
-        lines = code.splitlines()
-        cleaned = []
+        allowed_modules = {
+            # stdlib/common
+            'os','sys','json','time','re','datetime','traceback','typing','glob','pathlib','logging','warnings','itertools','collections','subprocess','math','random',
+            # data/plot
+            'pandas','numpy','matplotlib','seaborn','pyarrow','fastparquet',
+            # io/web
+            'requests','bs4','pandas_datareader','yfinance'
+        }
         # 1) 壊れたインポートの単純修正
         code = re.sub(r"import\s*\n\s+([A-Za-z_]\w*_mod)\b", r"import \1", code)
-        # 2) 行ごとのフィルタ処理
+        cleaned = []
         for line in code.splitlines():
             if re.match(r"^\s*import\s+[A-Za-z_]\w*_mod(\s+as\s+\w+)?\s*$", line):
                 # *_mod の直接importは破棄（後段の_safe_importを利用）
@@ -55,6 +63,20 @@ class PythonProjectExecuteTool(BaseTool):
             if re.match(r"^\s*from\s+[A-Za-z_]\w*_mod\s+import\b.*$", line):
                 # *_mod からの import も破棄
                 continue
+            # 2) 裸のメタキー行（JSON断片）を除去
+            if re.match(r"^\s*\"(task_id|description|plan_id)\"\s*:\s*", line):
+                continue
+            # 3) 無効または未知モジュールの単語インポートを除去
+            m = re.match(r"^\s*import\s+([A-Za-z_][\w.]*)\s*$", line)
+            if m:
+                root = m.group(1).split('.')[0]
+                if root not in allowed_modules:
+                    continue
+            m2 = re.match(r"^\s*from\s+([A-Za-z_][\w.]*)\s+import\b", line)
+            if m2:
+                root = m2.group(1).split('.')[0]
+                if root not in allowed_modules:
+                    continue
             cleaned.append(line)
         return "\n".join(cleaned)
 

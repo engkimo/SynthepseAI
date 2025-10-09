@@ -104,6 +104,25 @@ class AutoPlanAgent(ToolAgent):
         
         # Execute the tasks in the plan
         tasks = self.task_db.get_tasks_by_plan(plan_id)
+
+        # 初期成果物を書き出し（プラン作成直後に可視化できるように）
+        try:
+            import os, json
+            artifacts_dir = os.path.join(self.workspace_dir, "artifacts", plan_id)
+            os.makedirs(artifacts_dir, exist_ok=True)
+            tasks_list = [{
+                "id": t.id,
+                "description": t.description,
+                "status": t.status.value
+            } for t in tasks]
+            with open(os.path.join(artifacts_dir, "plan_tasks.json"), "w", encoding="utf-8") as f:
+                json.dump({"goal": goal, "tasks": tasks_list}, f, ensure_ascii=False, indent=2)
+            with open(os.path.join(artifacts_dir, "plan.md"), "w", encoding="utf-8") as f:
+                f.write(f"# Plan for {goal}\n\n")
+                for i, t in enumerate(tasks_list, 1):
+                    f.write(f"- [{t['status']}] Task {i}: {t['description']} (id: {t['id']})\n")
+        except Exception as e:
+            print(f"Failed to write initial plan artifacts: {str(e)}")
         
         # 実行前にモジュール再利用の機会を探る
         modules_by_task = {}

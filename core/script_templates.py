@@ -580,6 +580,11 @@ def main():
 {preview}
 ```\n"
                 append_report("Task Result", body)
+                # 画像のプレースホルダーを生成（環境にmatplotlib/numpyがあれば）
+                try:
+                    save_placeholder_plot()
+                except Exception:
+                    pass
             except Exception:
                 pass
         else:
