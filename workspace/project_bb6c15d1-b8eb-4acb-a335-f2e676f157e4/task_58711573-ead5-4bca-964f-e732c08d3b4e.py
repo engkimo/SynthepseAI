@@ -1,11 +1,9 @@
 
 # 必要なライブラリのインポート
-import pandas
-import to
-import matplotlib
+import warnings
 import numpy
 import typing
-import duplicates
+import matplotlib
 import os
 import json
 import time
@@ -15,9 +13,6 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 task_info = {
-    "task_id": "f804db97-f79f-4435-8f81-a00a3d9ca99f",
-    "description": "クリーニング済みの銘柄メタデータを永続化（CSVとParquet）し、解析で使用する最終リストを確定する。",
-    "plan_id": "e10bf2d3-25bb-4fb3-a073-49c8e45a434c"
 }
 
 task_description = task_info.get("description", "Unknown task")
@@ -419,31 +414,25 @@ def run_task():
     """
     try:
         result = None
-            "task_id": "f804db97-f79f-4435-8f81-a00a3d9ca99f",
-            "description": "クリーニング済みの銘柄メタデータを永続化（CSVとParquet）し、解析で使用する最終リストを確定する。",
-            "plan_id": "e10bf2d3-25bb-4fb3-a073-49c8e45a434c"
         }
         
         # 必要なライブラリのインポート
         import os
+        import sys
+        import warnings
+        import logging
+        import random
         import json
         import time
         import re
         import datetime
         import traceback
-        import glob
         from typing import Dict, List, Any, Optional, Union, Tuple
         
-        # Optional globals to prevent NameError when optional imports fail later
-        pyarrow = None
-        fastparquet = None
-        pd = None
-        np = None
-        
         task_description = task_info.get("description", "Unknown task")
-        insights = []
-        hypotheses = []
-        conclusions = []
+        insights: List[Dict[str, Any]] = []
+        hypotheses: List[Dict[str, Any]] = []
+        conclusions: List[Dict[str, Any]] = []
         
         
         # 成果物の出力先（プランごとのディレクトリ）
@@ -480,8 +469,17 @@ def run_task():
         def save_placeholder_plot():
             """matplotlibが利用可能なら簡易プロットを成果物として保存"""
             try:
+                import matplotlib
                 import matplotlib.pyplot as plt
-                import numpy as np  # local import to avoid global dependency
+                import numpy as np
+        
+                # ヘッドレスであればAggに変更（pyplot読込前が理想だが保険として）
+                if os.name != "nt" and not os.environ.get("DISPLAY"):
+                    try:
+                        matplotlib.use("Agg")
+                    except Exception:
+                        pass
+        
                 ensure_artifacts_dir()
                 x = np.arange(5)
                 y = np.linspace(1, 5, 5)
@@ -501,7 +499,10 @@ def run_task():
             try:
                 if os.path.exists(KNOWLEDGE_DB_PATH):
                     with open(KNOWLEDGE_DB_PATH, 'r', encoding='utf-8') as f:
-                        return json.load(f)
+                        content = f.read().strip()
+                        if not content:
+                            return {}
+                        return json.loads(content)
                 return {}
             except Exception as e:
                 print(f"知識データベース読み込みエラー: {str(e)}")
@@ -509,9 +510,11 @@ def run_task():
         
         
             try:
+                if not isinstance(knowledge_db, dict):
+                    return False
                 os.makedirs(os.path.dirname(KNOWLEDGE_DB_PATH), exist_ok=True)
                 with open(KNOWLEDGE_DB_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(knowledge_db, fp=f, ensure_ascii=False, indent=2)
+                    json.dump(knowledge_db, f, ensure_ascii=False, indent=2)
                 return True
             except Exception as e:
                 print(f"知識データベース保存エラー: {str(e)}")
@@ -650,7 +653,7 @@ def run_task():
         
                 simulation_result = local_vars.get("result", None)
         
-                if simulation_result:
+                if simulation_result is not None:
                     result["simulation_result"] = str(simulation_result)
                     result["verified"] = local_vars.get("verified", False)
                     result["confidence"] = local_vars.get("confidence", 0.5)
@@ -709,6 +712,31 @@ def run_task():
                 )
         
         
+        def get_related_knowledge(keywords: List[str], limit: int = 5) -> List[Dict[str, Any]]:
+            try:
+                knowledge_db = load_knowledge_db()
+                related = []
+                kws = [kw.lower() for kw in keywords if kw]
+                for subject, data in knowledge_db.items():
+                    if not isinstance(data, dict):
+                        continue
+                    subj_l = str(subject).lower()
+                    fact_l = str(data.get("fact", "")).lower()
+                    if any(kw in subj_l or kw in fact_l for kw in kws):
+                        related.append({
+                            "subject": subject,
+                            "fact": data.get("fact"),
+                            "confidence": data.get("confidence", 0.0),
+                            "last_updated": data.get("last_updated"),
+                            "source": data.get("source")
+                        })
+                    if len(related) >= limit:
+                        break
+                return related
+            except Exception:
+                return []
+        
+        
             """
             タスク実行結果を知識ベースに統合する
         
@@ -726,9 +754,12 @@ def run_task():
         
                 if isinstance(task_result, dict):
                     for key, value in task_result.items():
-                        if isinstance(value, (str, int, float, bool)):
+                        if isinstance(value, (str, int, float, bool, type(None), list, dict)):
                             subject = f"{task_description[:30]} - {key}"
-                            fact = str(value)
+                            try:
+                                fact = json.dumps(value, ensure_ascii=False) if isinstance(value, (list, dict)) else str(value)
+                            except Exception:
+                                fact = str(value)
                             knowledge_items.append({
                                 "subject": subject,
                                 "fact": fact,
@@ -782,37 +813,11 @@ def run_task():
                 return {}
         
         
-        def get_related_knowledge(keywords: List[str], limit: int = 10) -> List[Dict[str, Any]]:
-            """
-            簡易的に知識DBからキーワードに関連するエントリを抽出
-            """
-            try:
-                db = load_knowledge_db()
-                results = []
-                kws = [str(k).lower() for k in keywords if k]
-                for subject, data in db.items():
-                    text = f"{subject} {data.get('fact', '')}".lower()
-                    if any(k in text for k in kws):
-                        results.append({
-                            "subject": subject,
-                            "fact": data.get("fact"),
-                            "confidence": data.get("confidence", 0),
-                            "last_updated": data.get("last_updated"),
-                            "source": data.get("source")
-                        })
-                    if len(results) >= limit:
-                        break
-                return results
-            except Exception as e:
-                log_thought("warning", f"get_related_knowledge failed: {e}")
-                return []
-        
-        
             global task_description, insights, hypotheses, conclusions
         
             try:
-                task_info_local = globals().get('task_info', {})
-                task_description = task_info_local.get('description', 'Unknown task')
+                info = globals().get('task_info', {})
+                task_description = info.get('description', 'Unknown task')
                 task_start_time = time.time()
         
                 log_thought("task_execution_start", {
@@ -820,28 +825,18 @@ def run_task():
                     "timestamp_readable": datetime.datetime.now().isoformat()
                 })
         
-                keywords = [word for word in task_description.lower().split() if len(word) > 3]
+                keywords = [word for word in re.split(r'\s+', task_description.lower()) if len(word) > 1]
                 related_knowledge = []
                 try:
-                    knowledge_db = load_knowledge_db()
-                    for subject, data in knowledge_db.items():
-                        for keyword in keywords:
-                            if keyword.lower() in subject.lower() or (data.get("fact") and keyword.lower() in data.get("fact", "").lower()):
-                                related_knowledge.append({
-                                    "subject": subject,
-                                    "fact": data.get("fact"),
-                                    "confidence": data.get("confidence", 0),
-                                    "last_updated": data.get("last_updated"),
-                                    "source": data.get("source")
-                                })
-                                break
+                    related_knowledge = get_related_knowledge(keywords, limit=10)
                 except Exception as e:
                     print(f"関連知識取得エラー: {str(e)}")
         
                 if related_knowledge:
                     print(f"タスク '{task_description}' に関連する既存知識が {len(related_knowledge)} 件見つかりました:")
                     for i, knowledge in enumerate(related_knowledge):
-                        print(f"  {i+1}. {knowledge['subject']}: {knowledge['fact']} (確信度: {knowledge['confidence']:.2f})")
+                        conf = knowledge.get('confidence', 0.0)
+                        print(f"  {i+1}. {knowledge['subject']}: {knowledge.get('fact')} (確信度: {conf:.2f})")
         
                     if len(related_knowledge) >= 2:
                         hypothesis = f"タスク '{task_description}' は {related_knowledge[0]['subject']} と {related_knowledge[1]['subject']} に関連している可能性がある"
@@ -849,7 +844,6 @@ def run_task():
                 else:
                     print(f"タスク '{task_description}' に関連する既存知識は見つかりませんでした。")
                     add_insight("このタスクに関連する既存知識がないため、新しい知識の獲得が必要")
-        
                     request_multi_agent_discussion(f"「{task_description}」に関する基礎知識と仮説")
         
                 return task_start_time
@@ -868,542 +862,211 @@ def run_task():
             try:
                 result = None
         
-                def _safe_import(module_name, alias=None, pip_name=None, required=True, thoughts_label=None):
+                # Initialize containers and defaults
+                success = True
+                remarks: List[str] = []
+                imported_modules: Dict[str, Any] = {}
+                missing_modules: Dict[str, str] = {}
+                seed_value = 2024
+                warnings_suppressed = False
+                logging_initialized = False
+        
+                # Safe wrappers for helper functions
+                def _safe_call(func, *args, **kwargs):
                     try:
-                        module = __import__(module_name)
-                        if alias:
-                            globals()[alias] = module
-                        else:
-                            globals()[module_name] = module
-                        return module, None
-                    except Exception as e:
-                        msg = f"Missing required module '{module_name}'. Please install it"
-                        if pip_name:
-                            msg += f" via: pip install {pip_name}"
-                        msg += f". Error: {str(e)}"
-                        try:
-                            log_thought("error", msg)
-                        except Exception:
-                            pass
-                        if required:
-                            return None, msg
-                        else:
-                            return None, None
+                        return func(*args, **kwargs)
+                    except Exception:
+                        return None
         
-                # Import core modules using __import__
-                _os, err_os = _safe_import("os", alias="os", required=True)
-                _sys, err_sys = _safe_import("sys", alias="sys", required=True)
-                _json, err_json = _safe_import("json", alias="json", required=True)
-                _re, err_re = _safe_import("re", alias="re", required=True)
-                _glob, err_glob = _safe_import("glob", alias="glob", required=True)
-                _traceback, err_tb = _safe_import("traceback", alias="traceback", required=True)
-                _datetime_mod, err_dt = _safe_import("datetime", alias="datetime", required=True)
-                _pathlib, err_pl = _safe_import("pathlib", alias="pathlib", required=True)
-                _shutil, err_shutil = _safe_import("shutil", alias="shutil", required=False)
+                # Think log: goal and context
+                _safe_call(log_thought, "goal", "環境設定: ライブラリのインポート、警告抑制、ロギング初期化、乱数シード固定（分析準備）")
         
-                # Import data stack
-                _pd, err_pd = _safe_import("pandas", alias="pd", pip_name="pandas>=1.5", required=True)
-                _np, err_np = _safe_import("numpy", alias="np", pip_name="numpy", required=False)
-                _pa, err_pa = _safe_import("pyarrow", alias="pyarrow", pip_name="pyarrow", required=False)
-                _fp, err_fp = _safe_import("fastparquet", alias="fastparquet", pip_name="fastparquet", required=False)
-        
-                _errors = [e for e in [err_os, err_sys, err_json, err_re, err_glob, err_tb, err_dt, err_pl, err_pd] if e]
-                if _errors:
-                    result = {"status": "failed", "message": " | ".join(_errors)}
+                # Load knowledge DB and retrieve related knowledge
+                knowledge_db = _safe_call(load_knowledge_db) or {}
+                related = _safe_call(get_related_knowledge, ["環境設定", "numpy", "pandas", "再現性", "ロギング"], 5)
+                if related:
+                    _safe_call(log_thought, "retrieval", f"関連知識を取得: {len(related)}件")
                 else:
+                    _safe_call(log_thought, "retrieval", "関連知識は見つからない、デフォルトのベストプラクティスを適用")
+        
+                # Hypotheses
+                _safe_call(log_thought, "hypothesis", "numpyとpandasは利用可能であり、将来の分析・可視化に必要なmatplotlibとseabornも存在するはず")
+                _safe_call(log_thought, "hypothesis", "ヘッドレス環境の可能性があり、描画バックエンドはAggに設定した方が安定")
+        
+                # Initialize logging
+                try:
+                    logger_name = "env_setup"
+                    root_logger = logging.getLogger()
+                    if not root_logger.handlers:
+                        logging.basicConfig(
+                            level=logging.INFO,
+                            format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+                            datefmt="%Y-%m-%d %H:%M:%S",
+                        )
+                    logger = logging.getLogger(logger_name)
+                    logging_initialized = True
+                    logger.info("ロギングを初期化しました")
+                    _safe_call(log_thought, "decision", "ロギングをINFOレベルで設定")
+                    _safe_call(update_knowledge, "python_environment", "logging_initialized", 0.9)
+                except Exception as e:
+                    success = False
+                    remarks.append(f"ロギングの初期化に失敗: {e}")
+                    logger = logging.getLogger("env_setup_fallback")
+        
+                # Suppress warnings
+                try:
+                    warnings.filterwarnings("ignore")
+                    warnings_suppressed = True
+                    if logging_initialized:
+                        logger.info("警告を抑制しました (warnings.filterwarnings('ignore'))")
+                    _safe_call(update_knowledge, "python_environment", "warnings_suppressed", 0.9)
+                except Exception as e:
+                    success = False
+                    remarks.append(f"警告抑制に失敗: {e}")
+        
+                # Helper to try imports with friendly messages
+                def try_import(module_name, import_as=None, pip_name=None):
+                    mod = None
+                    error = None
                     try:
-                        # Initialize
-                        now_iso = datetime.datetime.now().isoformat()
-                        task_subject = "prime_2024_metadata"
-                        output_dir_candidates = [
-                            os.environ.get("ANALYSIS_OUTPUT_DIR"),
-                            "./artifacts/prime_2024",
-                            "./output/prime_2024",
-                            "./outputs/prime_2024"
-                        ]
-                        output_dir = next((d for d in output_dir_candidates if d), "./artifacts/prime_2024")
-                        import pathlib as _pathlib_local
-                        _pathlib_local.Path(output_dir).mkdir(parents=True, exist_ok=True)
-        
-                        # Thought logging and knowledge retrieval
-                        log_thought("plan", "Attempt to load cleaned 2024 Prime market metadata, validate quality, and persist final list to CSV/Parquet with a quality report.")
-                        kb = None
-                        try:
-                            kb = load_knowledge_db()
-                        except Exception as e:
-                            log_thought("warning", f"Could not load knowledge DB: {e}")
-        
-                        prior_knowledge = []
-                        try:
-                            prior_knowledge = get_related_knowledge(["prime", "プライム", "2024", "metadata", "銘柄", "上場"], limit=10) or []
-                        except Exception as e:
-                            log_thought("warning", f"Could not retrieve related knowledge: {e}")
-        
-                        # Hypothesis
-                        log_thought("hypothesis", "A cleaned metadata file exists in common data directories or is referenced in knowledge DB; it includes code, name, sector, and market columns to filter for Prime.")
-        
-                        # Discover input files
-                        def _candidate_files():
-                            candidates = []
-                            search_dirs = [
-                                ".", "./data", "./dataset", "./datasets", "./input", "./inputs", "./workspace", "./workspace/data"
-                            ]
-                            patterns = [
-                                "*prime*2024*.csv",
-                                "*Prime*2024*.csv",
-                                "*metadata*2024*.csv",
-                                "*meta*2024*.csv",
-                                "*prime*2024*.parquet",
-                                "*Prime*2024*.parquet",
-                                "*metadata*2024*.parquet",
-                                "*meta*2024*.parquet",
-                                "*jp*prime*2024*.*",
-                                "*tokyo*prime*2024*.*",
-                                "*clean*prime*2024*.*",
-                                "*銘柄*2024*.*",
-                                "*プライム*2024*.*"
-                            ]
-                            # From knowledge DB
-                            for item in prior_knowledge:
-                                try:
-                                    text = json.dumps(item, ensure_ascii=False)
-                                except Exception:
-                                    text = str(item)
-                                m = re.findall(r'((?:\.{0,2}/)?[\w\-/\\\.]*\.(?:csv|parquet))', text, flags=re.IGNORECASE)
-                                for path in m:
-                                    if os.path.isfile(path) and path not in candidates:
-                                        candidates.append(path)
-        
-                            # Environment variable direct path
-                            env_path = os.environ.get("PRIME_2024_METADATA_PATH")
-                            if env_path and os.path.isfile(env_path) and env_path not in candidates:
-                                candidates.append(env_path)
-        
-                            # Search filesystem
-                            for d in search_dirs:
-                                if not os.path.isdir(d):
-                                    continue
-                                for p in patterns:
-                                    for f in glob.glob(os.path.join(d, p)):
-                                        if os.path.isfile(f) and f not in candidates:
-                                            candidates.append(f)
-                            return candidates
-        
-                        candidates = _candidate_files()
-                        log_thought("observation", f"Discovered {len(candidates)} candidate files.")
-        
-                        # Read helpers
-                        def _read_dataframe(path):
-                            ext = os.path.splitext(path)[1].lower()
-                            if ext == ".csv":
-                                # Try common encodings used in JP datasets
-                                for enc in ["utf-8", "utf-8-sig", "cp932", "shift_jis", "euc_jp"]:
-                                    try:
-                                        df = pd.read_csv(path, dtype=str, encoding=enc)
-                                        return df, {"encoding": enc, "format": "csv"}
-                                    except Exception:
-                                        continue
-                                raise RuntimeError(f"Failed to read CSV with common encodings: {path}")
-                            elif ext == ".parquet":
-                                # Use available parquet engine if present
-                                engine = None
-                                if pyarrow is not None:
-                                    engine = "pyarrow"
-                                elif fastparquet is not None:
-                                    engine = "fastparquet"
-                                if engine is None:
-                                    raise RuntimeError("No parquet engine available (pyarrow/fastparquet).")
-                                df = pd.read_parquet(path, engine=engine)
-                                # Ensure all are str where feasible
-                                for c in df.columns:
-                                    try:
-                                        df[c] = df[c].astype(str)
-                                    except Exception:
-                                        pass
-                                return df, {"encoding": None, "format": "parquet", "engine": engine}
-                            else:
-                                raise RuntimeError(f"Unsupported file extension: {ext}")
-        
-                        # Column normalization
-                        def _normalize_columns(df):
-                            colmap = {
-                                "証券コード": "code",
-                                "コード番号": "code",
-                                "コード": "code",
-                                "銘柄コード": "code",
-                                "SecuritiesCode": "code",
-                                "銘柄名": "name",
-                                "銘柄": "name",
-                                "CompanyName": "name",
-                                "会社名": "name",
-                                "名称": "name",
-                                "業種": "sector",
-                                "業種名": "sector",
-                                "セクター": "sector",
-                                "Sector": "sector",
-                                "33業種区分": "sector33",
-                                "17業種区分": "sector17",
-                                "業種（TOPIX-17）": "sector17",
-                                "市場": "market",
-                                "市場区分": "market",
-                                "市場・商品区分": "market",
-                                "Market": "market",
-                                "ステータス": "status",
-                                "Status": "status",
-                                "上場区分": "listing",
-                                "上場廃止日": "delist_date",
-                                "上場日": "list_date",
-                                "基準日": "as_of",
-                                "基準日付": "as_of",
-                                "Date": "as_of",
-                                "市場変更予定": "reassignment_flag",
-                                "指定替え": "reassignment_flag",
-                                "監理": "watch_flag",
-                                "整理": "liquidation_flag",
-                                "整理銘柄": "liquidation_flag",
-                                "note": "note",
-                                "備考": "note",
-                            }
-                            rename = {}
-                            for c in df.columns:
-                                if c in colmap:
-                                    rename[c] = colmap[c]
-                                else:
-                                    # Try strip spaces and case-insensitive match
-                                    c_clean = re.sub(r"\s+", "", c).lower()
-                                    if c_clean in ["code", "ticker", "securitycode", "securitiescode"]:
-                                        rename[c] = "code"
-                                    elif c_clean in ["name", "companyname", "brandname", "issuername"]:
-                                        rename[c] = "name"
-                                    elif c_clean in ["sector", "industry", "gyoushu", "gyōshu"]:
-                                        rename[c] = "sector"
-                                    elif c_clean in ["market", "marketsegment", "ichiba", "marketdivision"]:
-                                        rename[c] = "market"
-                                    elif c_clean in ["status", "listingstatus"]:
-                                        rename[c] = "status"
-                            df = df.rename(columns=rename)
-                            return df
-        
-                        # Heuristic: identify best candidate
-                        best_df = None
-                        read_meta = None
-                        selected_path = None
-                        reason = None
-                        for path in candidates:
-                            try:
-                                df, meta = _read_dataframe(path)
-                                df = _normalize_columns(df)
-                                has_code = "code" in df.columns
-                                has_name = "name" in df.columns
-                                has_sector = "sector" in df.columns or "sector33" in df.columns or "sector17" in df.columns
-                                has_market = "market" in df.columns
-                                score = sum([has_code, has_name, has_sector, has_market]) + (1 if df.shape[0] > 50 else 0)
-                                if has_code and score >= 3:
-                                    best_df = df
-                                    read_meta = meta
-                                    selected_path = path
-                                    reason = f"Score={score}, rows={df.shape[0]}"
-                                    break
-                            except Exception as e:
-                                log_thought("warning", f"Failed to read candidate {path}: {e}")
-        
-                        if best_df is None:
-                            msg = "No suitable cleaned metadata file found. Provide a CSV/Parquet with at least code,name,sector,(market) for 2024 Prime."
-                            log_thought("error", msg)
-                            result = {"status": "failed", "message": msg, "candidates_checked": len(candidates)}
-                        else:
-                            log_thought("decision", f"Selected input file: {selected_path} ({reason}); meta={read_meta}")
-        
-                            df_raw = best_df.copy()
-        
-                            # Data cleanup
-                            issues = []
-        
-                            def add_issue(code, issue_type, detail, severity="info"):
-                                issues.append({
-                                    "code": code,
-                                    "issue_type": issue_type,
-                                    "detail": detail,
-                                    "severity": severity
-                                })
-        
-                            # Normalize code
-                            if "code" not in df_raw.columns:
-                                raise RuntimeError("Required column 'code' not found after normalization.")
-                            df_raw["code"] = df_raw["code"].astype(str).str.strip()
-                            # Extract 4+ digit numeric part if mixed
-                            extracted = df_raw["code"].str.extract(r"(\d{4,6})", expand=False)
-                            fixed_code_count = int((~extracted.isna() & (extracted != df_raw["code"])).sum())
-                            df_raw["code"] = extracted.fillna(df_raw["code"])
-                            if fixed_code_count > 0:
-                                add_issue(None, "code_fixed", f"Codes normalized using digit extraction for {fixed_code_count} rows.", "warning")
-        
-                            # Normalize code (keep 4-6 digit strings)
-                            def _normalize_code(c):
-                                if isinstance(c, str) and c.isdigit():
-                                    if len(c) >= 4:
-                                        return c
-                                return c
-        
-                            df_raw["code"] = df_raw["code"].apply(_normalize_code)
-        
-                            # Remove rows without valid numeric code
-                            invalid_mask = ~df_raw["code"].astype(str).str.fullmatch(r"\d{4,6}")
-                            invalid_count = int(invalid_mask.sum())
-                            if invalid_count > 0:
-                                add_issue(None, "invalid_code_removed", f"Removed {invalid_count} rows with invalid code.", "error")
-                            df_raw = df_raw[~invalid_mask].copy()
-        
-                            # Attempt fill name/sector from duplicates of same code
-                            for col in ["name", "sector"]:
-                                if col in df_raw.columns:
-                                    df_raw[col] = df_raw.groupby("code")[col].transform(lambda s: s.ffill().bfill())
-        
-                            # Drop exact duplicates
-                            pre = df_raw.shape[0]
-                            df_raw = df_raw.drop_duplicates(subset=["code"], keep="first")
-                            dropped_dup = pre - df_raw.shape[0]
-                            if dropped_dup > 0:
-                                add_issue(None, "duplicate_codes_dropped", f"Dropped {dropped_dup} duplicate code rows.", "warning")
-        
-                            # Market filtering for Prime
-                            def _is_prime(val):
-                                if val is None:
-                                    return False
-                                s = str(val).lower()
-                                return ("prime" in s) or ("プライム" in s)
-        
-                            if "market" in df_raw.columns:
-                                prime_mask = df_raw["market"].apply(_is_prime)
-                                prime_count = int(prime_mask.sum())
-                                non_prime_count = int((~prime_mask).sum())
-                                if prime_count == 0:
-                                    add_issue(None, "market_filter", "No rows labeled as Prime; keeping all rows but logging warning.", "warning")
-                                    df_prime = df_raw.copy()
-                                else:
-                                    df_prime = df_raw[prime_mask].copy()
-                                    add_issue(None, "market_filter", f"Filtered to Prime market: kept {prime_count}, excluded {non_prime_count}.", "info")
-                            else:
-                                add_issue(None, "market_missing", "Market column missing; cannot filter by Prime. Keeping all rows.", "warning")
-                                df_prime = df_raw.copy()
-        
-                            # Status-based exclusions: delisted or liquidation flags
-                            excluded_reasons = []
-                            if "status" in df_prime.columns:
-                                delist_mask = df_prime["status"].astype(str).str.contains("上場廃止|delist|整理", case=False, na=False)
-                                count = int(delist_mask.sum())
-                                if count > 0:
-                                    excluded_reasons.append(("delisted_status", count))
-                                    df_prime = df_prime[~delist_mask].copy()
-                            if "liquidation_flag" in df_prime.columns:
-                                liq_mask = df_prime["liquidation_flag"].astype(str).str.contains("(^1$)|true|有|あり|Yes|yes", case=False, na=False)
-                                count = int(liq_mask.sum())
-                                if count > 0:
-                                    excluded_reasons.append(("liquidation_flag", count))
-                                    df_prime = df_prime[~liq_mask].copy()
-                            for r, c in excluded_reasons:
-                                add_issue(None, "status_exclusion", f"Excluded {c} rows due to {r}.", "warning")
-        
-                            # Missing name/sector handling
-                            missing_name = int(df_prime["name"].isna().sum()) if "name" in df_prime.columns else 0
-                            missing_sector = None
-                            if "sector" in df_prime.columns:
-                                missing_sector = int(df_prime["sector"].isna().sum())
-                            elif "sector33" in df_prime.columns:
-                                df_prime["sector"] = df_prime["sector33"]
-                                missing_sector = int(df_prime["sector"].isna().sum())
-                            elif "sector17" in df_prime.columns:
-                                df_prime["sector"] = df_prime["sector17"]
-                                missing_sector = int(df_prime["sector"].isna().sum())
-                            else:
-                                add_issue(None, "sector_missing", "No sector column available. Proceeding without sector.", "warning")
-                            if missing_name and missing_name > 0:
-                                add_issue(None, "missing_name", f"{missing_name} rows have missing name.", "warning")
-                            if missing_sector is not None and missing_sector > 0:
-                                add_issue(None, "missing_sector", f"{missing_sector} rows have missing sector.", "warning")
-        
-                            # Reassignment flag: mark but do not exclude by default
-                            if "reassignment_flag" in df_prime.columns:
-                                reassign_true = df_prime["reassignment_flag"].astype(str).str.contains("(^1$)|true|有|あり|予定|Yes|yes", case=False, na=False).sum()
-                                if reassign_true > 0:
-                                    add_issue(None, "reassignment_flag", f"{int(reassign_true)} rows flagged for market change; retained but flagged.", "info")
-        
-                            # Finalize minimal schema
-                            keep_cols = []
-                            for col in ["code", "name", "sector", "market", "status", "as_of", "list_date", "delist_date", "reassignment_flag"]:
-                                if col in df_prime.columns:
-                                    keep_cols.append(col)
-                            df_final = df_prime[keep_cols].copy()
-        
-                            # Infer as_of if missing
-                            if "as_of" not in df_final.columns:
-                                df_final["as_of"] = "2024-12-31"
-                                add_issue(None, "as_of_inferred", "Missing as_of; defaulted to 2024-12-31.", "info")
-                            else:
-                                # Normalize date text to YYYY-MM-DD if possible
-                                def _norm_date(x):
-                                    s = str(x)
-                                    m = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
-                                    if m:
-                                        y, mo, d = m.group(1), m.group(2).zfill(2), m.group(3).zfill(2)
-                                        return f"{y}-{mo}-{d}"
-                                    m2 = re.search(r"(\d{4})(\d{2})(\d{2})", s)
-                                    if m2:
-                                        return f"{m2.group(1)}-{m2.group(2)}-{m2.group(3)}"
-                                    return s
-        
-                                df_final["as_of"] = df_final["as_of"].apply(_norm_date)
-        
-                            # Types and ordering
-                            df_final["code"] = df_final["code"].astype(str)
-                            if "name" in df_final.columns:
-                                df_final["name"] = df_final["name"].astype(str)
-                            if "sector" in df_final.columns:
-                                df_final["sector"] = df_final["sector"].astype(str)
-                            if "market" in df_final.columns:
-                                df_final["market"] = df_final["market"].astype(str)
-        
-                            df_final = df_final.drop_duplicates(subset=["code"]).reset_index(drop=True)
-        
-                            # Summary counts
-                            summary = {
-                                "timestamp": now_iso,
-                                "input_path": selected_path,
-                                "input_rows": int(best_df.shape[0]),
-                                "final_rows": int(df_final.shape[0]),
-                                "columns": list(df_final.columns),
-                            }
-        
-                            # Quality report artifacts
-                            import pandas as _pd_local  # ensure pd is available
-                            issues_df = _pd_local.DataFrame(issues)
-                            report_json_path = os.path.join(output_dir, "prime_2024_quality_report.json")
-                            report_csv_path = os.path.join(output_dir, "prime_2024_quality_report.csv")
-                            final_csv_path = os.path.join(output_dir, "prime_2024_final_list.csv")
-                            final_parquet_path = os.path.join(output_dir, "prime_2024_final_list.parquet")
-                            manifest_path = os.path.join(output_dir, "prime_2024_manifest.json")
-        
-                            # Persist CSV
-                            try:
-                                df_final.to_csv(final_csv_path, index=False, encoding="utf-8-sig")
-                                log_thought("result", f"Saved final CSV: {final_csv_path}")
-                                csv_saved = True
-                            except Exception as e:
-                                log_thought("error", f"CSV save failed: {e}")
-                                csv_saved = False
-        
-                            # Persist Parquet
-                            parquet_saved = False
-                            parquet_engine = None
-                            if pyarrow is None and fastparquet is None:
-                                add_issue(None, "parquet_engine_missing", "pyarrow/fastparquet not available; Parquet not saved.", "warning")
-                            else:
-                                try:
-                                    if pyarrow is not None:
-                                        df_final.to_parquet(final_parquet_path, engine="pyarrow", index=False)
-                                        parquet_engine = "pyarrow"
-                                        parquet_saved = True
-                                    else:
-                                        df_final.to_parquet(final_parquet_path, engine="fastparquet", index=False)
-                                        parquet_engine = "fastparquet"
-                                        parquet_saved = True
-                                    log_thought("result", f"Saved final Parquet using {parquet_engine}: {final_parquet_path}")
-                                except Exception as e:
-                                    add_issue(None, "parquet_save_failed", f"Parquet save failed: {e}", "error")
-                                    parquet_saved = False
-        
-                            # Persist quality report
-                            report_payload = {
-                                "summary": summary,
-                                "issues": issues,
-                            }
-                            try:
-                                with open(report_json_path, "w", encoding="utf-8") as f:
-                                    json.dump(report_payload, f, ensure_ascii=False, indent=2)
-                            except Exception as e:
-                                log_thought("error", f"Failed to save quality report JSON: {e}")
-                            try:
-                                if not issues_df.empty:
-                                    issues_df.to_csv(report_csv_path, index=False, encoding="utf-8-sig")
-                                else:
-                                    # create an empty placeholder with headers
-                                    _pd_local.DataFrame([{"issue_type": "", "detail": "", "severity": ""}]).head(0).to_csv(report_csv_path, index=False, encoding="utf-8-sig")
-                            except Exception as e:
-                                log_thought("error", f"Failed to save quality report CSV: {e}")
-        
-                            # Persist manifest
-                            manifest = {
-                                "generated_at": now_iso,
-                                "input": {
-                                    "path": selected_path,
-                                    "meta": read_meta
-                                },
-                                "output": {
-                                    "csv": final_csv_path if csv_saved else None,
-                                    "parquet": final_parquet_path if parquet_saved else None,
-                                    "parquet_engine": parquet_engine,
-                                    "quality_report_json": report_json_path,
-                                    "quality_report_csv": report_csv_path
-                                },
-                                "summary": summary,
-                                "schema": {
-                                    "columns": {c: str(df_final[c].dtype) for c in df_final.columns}
-                                }
-                            }
-                            try:
-                                with open(manifest_path, "w", encoding="utf-8") as f:
-                                    json.dump(manifest, f, ensure_ascii=False, indent=2)
-                            except Exception as e:
-                                log_thought("error", f"Failed to save manifest: {e}")
-        
-                            # Update knowledge DB with outputs
-                            try:
-                                update_knowledge(task_subject, json.dumps({
-                                    "final_list_csv": final_csv_path if csv_saved else None,
-                                    "final_list_parquet": final_parquet_path if parquet_saved else None,
-                                    "quality_report_json": report_json_path,
-                                    "quality_report_csv": report_csv_path,
-                                    "manifest": manifest_path,
-                                    "rows": int(df_final.shape[0]),
-                                }, ensure_ascii=False), 0.9)
-                                if parquet_saved:
-                                    update_knowledge("parquet_engine_preference", f"Used {parquet_engine} successfully on {now_iso}", 0.7)
-                            except Exception as e:
-                                log_thought("warning", f"Failed to update knowledge DB: {e}")
-        
-                            # Hypothesis testing: Expect final row count > 1000 for JP Prime 2024
-                            expected_min = 1000
-                            hypothesis = f"Final Prime 2024 list should contain at least {expected_min} entries."
-                            log_thought("hypothesis", hypothesis)
-                            test_passed = int(df_final.shape[0]) >= expected_min
-                            log_thought("result", f"Hypothesis {'passed' if test_passed else 'failed'} with {df_final.shape[0]} rows.")
-                            try:
-                                update_knowledge("prime_2024_rowcount", f"{df_final.shape[0]} rows; hypothesis {'passed' if test_passed else 'failed'}", 0.6)
-                            except Exception:
-                                pass
-        
-                            status = "success" if (csv_saved or parquet_saved) else "partial"
-                            message = "Final list saved." if (csv_saved or parquet_saved) else "Processing finished but saving failed."
-                            result = {
-                                "status": status,
-                                "message": message,
-                                "input_path": selected_path,
-                                "final_count": int(df_final.shape[0]),
-                                "output": manifest["output"],
-                                "summary": summary,
-                                "notes": {
-                                    "csv_saved": csv_saved,
-                                    "parquet_saved": parquet_saved,
-                                    "parquet_engine": parquet_engine,
-                                }
-                            }
+                        mod = importlib.import_module(module_name)
+                        name_key = import_as if import_as else module_name
+                        imported_modules[name_key] = mod
+                        if logging_initialized:
+                            logger.info(f"モジュールをインポートしました: {module_name}")
+                    except ImportError:
+                        error = f"モジュールが見つかりません: {module_name}. インストール例: pip install {pip_name or module_name}"
+                        missing_modules[module_name] = error
+                        if logging_initialized:
+                            logger.warning(error)
                     except Exception as e:
-                        err_msg = f"Unhandled error: {e}"
+                        error = f"モジュール {module_name} のインポート中にエラー: {e}"
+                        missing_modules[module_name] = error
+                        if logging_initialized:
+                            logger.error(error)
+                    return mod, error
+        
+                # Detect headless and set matplotlib backend early if possible
+                headless = False
+                try:
+                    if os.name != "nt" and not os.environ.get("DISPLAY"):
+                        headless = True
+                    if headless:
+                        mpl_core, _ = try_import("matplotlib", "matplotlib", "matplotlib")
+                        if mpl_core:
+                            try:
+                                mpl_core.use("Agg")  # must be before importing pyplot
+                                if logging_initialized:
+                                    logger.info("ヘッドレス環境検出: matplotlibバックエンドを'Agg'に設定")
+                                _safe_call(update_knowledge, "python_environment", "matplotlib_backend_Agg", 0.9)
+                            except Exception as e:
+                                remarks.append(f"matplotlibバックエンド設定に失敗: {e}")
+                except Exception as e:
+                    remarks.append(f"ヘッドレス判定中にエラー: {e}")
+        
+                # Third-party imports
+                np, _ = try_import("numpy", "numpy", "numpy")
+                pd, _ = try_import("pandas", "pandas", "pandas")
+                # Ensure pyplot after backend set
+                plt, _ = try_import("matplotlib.pyplot", "plt", "matplotlib")
+                sns, _ = try_import("seaborn", "seaborn", "seaborn")
+        
+                # Optional: torch and tensorflow for reproducibility if available
+                torch, _ = try_import("torch", "torch", "torch")
+                tf, _ = try_import("tensorflow", "tf", "tensorflow")
+        
+                # Set random seeds for reproducibility
+                try:
+                    # Note: PYTHONHASHSEED affects hashing randomization; takes effect for new processes
+                    os.environ["PYTHONHASHSEED"] = str(seed_value)
+                    random.seed(seed_value)
+                    if np:
                         try:
-                            log_thought("error", err_msg + "\n" + traceback.format_exc())
+                            np.random.seed(seed_value)  # global RNG
+                            # Also create a default Generator for modern API
+                            rng = getattr(np.random, "default_rng", None)
+                            if callable(rng):
+                                _ = rng(seed_value)
+                        except Exception as e:
+                            remarks.append(f"NumPyのシード設定に失敗: {e}")
+                    if torch:
+                        try:
+                            torch.manual_seed(seed_value)
+                            if hasattr(torch, "cuda") and callable(getattr(torch.cuda, "is_available", None)) and torch.cuda.is_available():
+                                torch.cuda.manual_seed_all(seed_value)
+                            if hasattr(torch, "use_deterministic_algorithms"):
+                                try:
+                                    torch.use_deterministic_algorithms(True)
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            remarks.append(f"PyTorchのシード設定に失敗: {e}")
+                    if tf:
+                        try:
+                            if hasattr(tf, "random") and hasattr(tf.random, "set_seed"):
+                                tf.random.set_seed(seed_value)
+                        except Exception as e:
+                            remarks.append(f"TensorFlowのシード設定に失敗: {e}")
+        
+                    if logging_initialized:
+                        logger.info(f"乱数シードを固定しました: {seed_value}")
+                    _safe_call(update_knowledge, "python_environment", f"seed_fixed_{seed_value}", 0.95)
+                    _safe_call(log_thought, "decision", f"再現性確保のためシードを{seed_value}に設定")
+                except Exception as e:
+                    success = False
+                    remarks.append(f"乱数シード設定に失敗: {e}")
+        
+                # Configure seaborn/matplotlib defaults for consistent visuals
+                try:
+                    if sns:
+                        try:
+                            sns.set_theme(style="whitegrid")
                         except Exception:
                             pass
-                        result = {"status": "failed", "message": err_msg}
+                    if plt:
+                        try:
+                            plt.rcParams["figure.figsize"] = (8, 5)
+                            plt.rcParams["axes.grid"] = True
+                        except Exception:
+                            pass
+                    if logging_initialized:
+                        logger.info("可視化のデフォルト設定を適用しました")
+                except Exception as e:
+                    remarks.append(f"可視化デフォルト設定に失敗: {e}")
+        
+                # Knowledge updates based on availability
+                _safe_call(update_knowledge, "python_environment", f"numpy_available:{bool(np)}", 0.9)
+                _safe_call(update_knowledge, "python_environment", f"pandas_available:{bool(pd)}", 0.9)
+                _safe_call(update_knowledge, "python_environment", f"matplotlib_available:{bool(plt)}", 0.9)
+                _safe_call(update_knowledge, "python_environment", f"seaborn_available:{bool(sns)}", 0.9)
+        
+                # Record observations
+                available_count = len(imported_modules)
+                missing_count = len(missing_modules)
+                _safe_call(log_thought, "observation", f"インポート成功: {available_count}件, 未導入: {missing_count}件")
+        
+                # Construct final result
+                status = "success" if success and missing_count == 0 else ("partial" if success else "error")
+                result = {
+                    "status": status,
+                    "imported_modules": sorted(list(imported_modules.keys())),
+                    "missing_modules": missing_modules,
+                    "seed": seed_value,
+                    "logging_initialized": logging_initialized,
+                    "warnings_suppressed": warnings_suppressed,
+                    "headless_backend": "Agg" if headless else None,
+                    "remarks": remarks,
+                }
+        
+                # Hypothesis testing evaluation and knowledge update
+                hypothesis_result = "一部不足" if missing_count > 0 else "概ね達成"
+                _safe_call(log_thought, "analysis", f"仮説検証結果: {hypothesis_result}")
+                _safe_call(update_knowledge, "environment_setup", f"core_libs_ready:{missing_count==0}", 0.85)
+        
+                # Save knowledge DB (avoid overwriting with empty data)
+                if isinstance(knowledge_db, dict) and knowledge_db:
+                    _safe_call(save_knowledge_db, knowledge_db)
+        
                 if result is None:
                     result = "Task completed successfully"
                 return result
@@ -1446,6 +1109,11 @@ def run_task():
                             preview = preview[:1200] + "..."
                         body = f"### Task\n- Description: {task_description}\n\n### Result Preview\n\n{preview}\n\n"
                         append_report("Task Result", body)
+                        # 画像のプレースホルダーを生成（環境にmatplotlib/numpyがあれば）
+                        try:
+                            save_placeholder_plot()
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 else:
@@ -1549,6 +1217,11 @@ def main():
 {preview}
 ```\n"
                 append_report("Task Result", body)
+                # 画像のプレースホルダーを生成（環境にmatplotlib/numpyがあれば）
+                try:
+                    save_placeholder_plot()
+                except Exception:
+                    pass
             except Exception:
                 pass
         else:
