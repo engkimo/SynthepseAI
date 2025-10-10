@@ -43,6 +43,8 @@ class PythonProjectExecuteTool(BaseTool):
         - LLMが生成した壊れた改行インポート（例: "import\n    np_mod"）を修正
         - テンプレ由来のメタ断片（"task_id": 等の裸キー行）を除去
         - 明らかに無効/未知の単語インポート（例: `import to`, `import duplicates`）を除去
+        - Markdownコードフェンス（```）や裸の括弧のみの行（{, }, ], ) などを除去
+        - 重複した import 行を除去
         """
         import re
         allowed_modules = {
@@ -56,7 +58,15 @@ class PythonProjectExecuteTool(BaseTool):
         # 1) 壊れたインポートの単純修正
         code = re.sub(r"import\s*\n\s+([A-Za-z_]\w*_mod)\b", r"import \1", code)
         cleaned = []
+        seen_imports = set()
         for line in code.splitlines():
+            # 0) コードフェンスを削除
+            if line.strip().startswith("```"):
+                continue
+            # 0b) Pythonとして明らかに無効な import 行を除去（例: "import 2024"）
+            if re.match(r"^\s*import\b", line):
+                if not re.match(r"^\s*import\s+[A-Za-z_][\w.]*(\s+as\s+\w+)?\s*$", line):
+                    continue
             if re.match(r"^\s*import\s+[A-Za-z_]\w*_mod(\s+as\s+\w+)?\s*$", line):
                 # *_mod の直接importは破棄（後段の_safe_importを利用）
                 continue
@@ -66,19 +76,52 @@ class PythonProjectExecuteTool(BaseTool):
             # 2) 裸のメタキー行（JSON断片）を除去
             if re.match(r"^\s*\"(task_id|description|plan_id)\"\s*:\s*", line):
                 continue
+            # 2b) JSON風キー行を広めに除去（例: "key": value,）
+            if re.match(r"^\s*\"[A-Za-z0-9_ -]+\"\s*:\s*.*$,?", line):
+                continue
             # 3) 無効または未知モジュールの単語インポートを除去
             m = re.match(r"^\s*import\s+([A-Za-z_][\w.]*)\s*$", line)
             if m:
                 root = m.group(1).split('.')[0]
                 if root not in allowed_modules:
                     continue
+                # 重複import除去
+                if line.strip() in seen_imports:
+                    continue
+                seen_imports.add(line.strip())
             m2 = re.match(r"^\s*from\s+([A-Za-z_][\w.]*)\s+import\b", line)
             if m2:
                 root = m2.group(1).split('.')[0]
                 if root not in allowed_modules:
                     continue
+                if line.strip() in seen_imports:
+                    continue
+                seen_imports.add(line.strip())
+            # 4) 裸の括弧/ブラケット/ブレースのみの行を除去
+            if re.match(r"^\s*[\}\]\)]\s*,?\s*$", line) or re.match(r"^\s*[\{\[]\s*,?\s*$", line):
+                continue
             cleaned.append(line)
-        return "\n".join(cleaned)
+        text = "\n".join(cleaned)
+        # 5) 既知の誤ったアーティファクトパスを修正
+        text = re.sub(r"ARTIFACTS_BASE\s*=\s*['\"]\./workspace/artifacts['\"]", (
+            "try:\n"
+            "    _CWD = os.getcwd()\n"
+            "    ARTIFACTS_BASE = os.path.join(os.path.abspath(os.path.join(_CWD, '..')), 'artifacts')\n"
+            "except Exception:\n"
+            "    ARTIFACTS_BASE = './workspace/artifacts'"
+        ), text)
+        return text
+
+    def _looks_like_full_script(self, code: str) -> bool:
+        """タスク固有コードではなく、既にテンプレート適用済みのフルスクリプトかを判定"""
+        markers = [
+            "def run_task(",
+            "def main(",
+            "KNOWLEDGE_DB_PATH =",
+            "THINKING_LOG_PATH =",
+            "task_info = {",
+        ]
+        return any(m in code for m in markers)
 
     def _apply_template(self, template: str, imports: str, main_code: str, extra: dict | None = None) -> str:
         """{imports}, {main_code} と任意の追加プレースホルダを波括弧置換で安全に適用"""
@@ -153,6 +196,27 @@ class PythonProjectExecuteTool(BaseTool):
         
         # スクリプト名を作成（タスクIDを使用）
         script_name = f"task_{task_id}.py"
+
+        # 既にテンプレート適用済みのフルスクリプトなら、そのまま保存・実行
+        if self._looks_like_full_script(task.code):
+            try:
+                # 既存のフルスクリプトは破壊しない（最低限の整形はフォーマッタに委譲）
+                full_code = task.code
+                # 早期に構文チェック（失敗しても続行）
+                try:
+                    compile(full_code, script_name, "exec")
+                except Exception:
+                    pass
+                script_path = env.save_script(script_name, full_code)
+                success, stdout, stderr = env.execute_script(script_path)
+                if success:
+                    self.task_db.update_task(task_id, TaskStatus.COMPLETED, stdout)
+                    return ToolResult(True, stdout)
+                else:
+                    self.task_db.update_task(task_id, TaskStatus.FAILED, stderr)
+                    return ToolResult(False, None, stderr)
+            except Exception as e:
+                return ToolResult(False, None, f"Failed to execute pre-templated script: {e}")
         
         # タスク情報を環境変数として設定するコード（インデントなし）
         task_info_code = r"""task_info = {
@@ -485,8 +549,8 @@ if __name__ == "__main__":
             })
         
         # コードの先頭にタスク情報を追加 - task_info_code は不要（テンプレートに含まれている）
-        # 保存前に最低限のサニタイズを実施
-        full_code = self._sanitize_generated_code(formatted_code)
+        # 重要: 既にフルスクリプトのため破壊的サニタイズは行わない
+        full_code = formatted_code
         
         # スクリプトを保存（自動フォーマット処理が適用される）
         print(f"Formatting and saving task script: {script_name}")

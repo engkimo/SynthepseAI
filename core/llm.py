@@ -43,6 +43,16 @@ class LLM:
         self.model = model
         self.temperature = temperature
         self.provider = provider
+        # リクエストタイムアウト（秒）と強制モックの設定
+        try:
+            self.request_timeout = float(os.environ.get("LLM_TIMEOUT_SECONDS", "20"))
+        except Exception:
+            self.request_timeout = 20.0
+        self.mock_mode = False
+        force_mock_env = os.environ.get("FORCE_MOCK_LLM", "").lower()
+        if force_mock_env in {"1", "true", "yes", "on"}:
+            print("FORCE_MOCK_LLM is set — running LLM in mock mode.")
+            self.mock_mode = True
         
         # Initialize the OpenAI client
         if api_key:
@@ -56,7 +66,6 @@ class LLM:
             else:
                 openai_api_key = os.environ.get("OPENAI_API_KEY")
             
-        self.mock_mode = False
         if not openai_api_key:
             print("LLMはモックモードで動作中です。実際のAPIコールは行われません。")
             self.mock_mode = True
@@ -64,7 +73,8 @@ class LLM:
         
         if provider == "openai":
             if _OPENAI_AVAILABLE:
-                self.client = OpenAI(api_key=openai_api_key)  # type: ignore
+                # 強制モック時はクライアント生成をスキップ
+                self.client = None if self.mock_mode else OpenAI(api_key=openai_api_key)  # type: ignore
             else:
                 # SDKがない場合もモックモードで継続
                 print("openai SDKが見つかりません。モックモードで動作します。")
@@ -79,18 +89,17 @@ class LLM:
         except Exception:
             return False
 
-    def _openai_chat(self, messages):
-        """OpenAI Chat API call with model-specific parameter handling."""
+    def _openai_chat(self, messages, temperature: Optional[float] = None):
+        """OpenAI Chat API call with explicit temperature support."""
+        if self.mock_mode:
+            raise RuntimeError("LLM is in mock mode; network call disabled")
         params = {
             "model": self.model,
             "messages": messages,
+            "temperature": self.temperature if temperature is None else temperature,
         }
-        # Some models (e.g., gpt-5) only allow default temperature (1)
-        if not self._is_gpt5_model():
-            params["temperature"] = self.temperature
-        else:
-            params["temperature"] = 1
-        return self.client.chat.completions.create(**params)
+        # 明示的にタイムアウトを指定
+        return self.client.chat.completions.create(timeout=self.request_timeout, **params)
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def generate_text(self, prompt: str) -> str:
@@ -119,7 +128,7 @@ class LLM:
                 return "APIキーが無効なため、モックレスポンスを返します。有効なAPIキーを設定してください。"
             
             if self.provider == "openai":
-                response = self._openai_chat(messages)
+                response = self._openai_chat(messages, temperature=self.temperature)
                 return response.choices[0].message.content
             elif self.provider == "openrouter":
                 headers = {
@@ -302,9 +311,30 @@ except Exception as e:
             """.strip()
             
         try:
-            response = self._openai_chat([{"role": "user", "content": prompt}])
-            
-            code = response.choices[0].message.content
+            if self.provider == "openai":
+                response = self._openai_chat([{"role": "user", "content": prompt}], temperature=0.2)
+                code = response.choices[0].message.content
+            elif self.provider == "openrouter":
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://synthepseai.com",
+                    "X-Title": "SynthepseAI"
+                }
+                data = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2
+                }
+                import requests as _rq
+                resp = _rq.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+                if resp.status_code != 200:
+                    raise ValueError(f"OpenRouter API returned error: {resp.text}")
+                code = resp.json()["choices"][0]["message"]["content"]
+            else:
+                # fallback to default path
+                response = self._openai_chat([{"role": "user", "content": prompt}], temperature=0.2)
+                code = response.choices[0].message.content
             
             # Remove markdown code blocks if they exist
             code = code.replace("```python", "").replace("```", "").strip()
@@ -350,13 +380,31 @@ except Exception as e:
             """.strip()
             
         try:
-            response = self._openai_chat([{"role": "user", "content": prompt}])
-            
-            fixed_code = response.choices[0].message.content
-            
-            # Remove markdown code blocks if they exist
+            if self.provider == "openai":
+                response = self._openai_chat([{"role": "user", "content": prompt}], temperature=0.2)
+                fixed_code = response.choices[0].message.content
+            elif self.provider == "openrouter":
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://synthepseai.com",
+                    "X-Title": "SynthepseAI"
+                }
+                data = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2
+                }
+                import requests as _rq
+                resp = _rq.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+                if resp.status_code != 200:
+                    raise ValueError(f"OpenRouter API returned error: {resp.text}")
+                fixed_code = resp.json()["choices"][0]["message"]["content"]
+            else:
+                response = self._openai_chat([{"role": "user", "content": prompt}], temperature=0.2)
+                fixed_code = response.choices[0].message.content
+
             fixed_code = fixed_code.replace("```python", "").replace("```", "").strip()
-            
             return fixed_code
         except Exception as e:
             print(f"Error analyzing error: {str(e)}")

@@ -23,6 +23,7 @@
 - 継続思考中: 新たな知見に応じた将来タスク/改善提案が思考ログ（`workspace/persistent_thinking/`）へ蓄積され、次回実行で反映。
 
 ## スライド/ドキュメントの自動生成
+- 現状: プラン完了時に `report.md`（なければ `plan.md`）から `slides/slides.md` を自動生成（Marp互換の区切り`---`付与）。
 - 方針: `report.md` をソースとして将来的にスライド（例: Marp/Reveal.js/Pandoc）を生成し、`workspace/artifacts/<plan_id>/slides/` に配置。
 - 依存導入が不要な範囲でまずはMarkdown集約を継続し、必要に応じてエクスポート機構を追加します。
 

@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import threading
+from .slide_exporter import generate_slides
 
 class AutoPlanAgent(ToolAgent):
     def __init__(
@@ -590,6 +591,15 @@ class AutoPlanAgent(ToolAgent):
             os.makedirs(artifacts_dir, exist_ok=True)
             with open(os.path.join(artifacts_dir, "plan_summary.txt"), "w", encoding="utf-8") as f:
                 f.write(summary)
+
+            # Minimal slide generation from report/plan for easy review
+            try:
+                out_path = generate_slides(artifacts_dir)
+                if out_path:
+                    print(f"Slides generated: {out_path}")
+            except Exception as _e:
+                # Non-fatal: slide generation is best-effort
+                pass
         except Exception as e:
             print(f"Failed to write plan summary artifact: {str(e)}")
         return summary

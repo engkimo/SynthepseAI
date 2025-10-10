@@ -46,6 +46,28 @@ class PlanningTool(BaseTool):
                 code = code.replace(f"{{{k}}}", str(v))
         return code
 
+    def _sanitize_main_code(self, main_code: str) -> str:
+        """LLMが返したmain_code断片をテンプレートに安全に挿入できる形にサニタイズ"""
+        import re
+        # 1) コードフェンスを除去
+        lines = [ln for ln in main_code.splitlines() if not ln.strip().startswith("```")]
+        # 2) JSON/裸キー行や単独の括弧だけの行を除去
+        cleaned: list[str] = []
+        for ln in lines:
+            if re.match(r"^\s*\"[A-Za-z0-9_ -]+\"\s*:\s*.*$,?", ln):
+                continue
+            if re.match(r"^\s*[\}\]\)]\s*,?\s*$", ln) or re.match(r"^\s*[\{\[]\s*,?\s*$", ln):
+                continue
+            cleaned.append(ln)
+        text = "\n".join(cleaned)
+        # 3) 先頭の余分なインデントを一段削る（過インデント対策）
+        try:
+            if all((ln.startswith("    ") or ln.strip() == "") for ln in cleaned[:10] if ln.strip() != ""):
+                text = "\n".join(ln[4:] if ln.startswith("    ") else ln for ln in cleaned)
+        except Exception:
+            pass
+        return text.strip()
+
     def _indent_block(self, code: str, spaces: int = 8) -> str:
         indent = " " * spaces
         return "\n".join(indent + line if line.strip() != "" else "" for line in code.splitlines())
@@ -564,7 +586,8 @@ class PlanningTool(BaseTool):
         imports_text = "\n".join(imports) if imports else "# No additional imports"
         
         # メインコードからインポート文を削除
-        main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
+        main_code_cleaned = re.sub(import_pattern, '', main_code)
+        main_code_cleaned = self._sanitize_main_code(main_code_cleaned)
         
         task_info_code = f"""task_info = {{
     "task_id": "{task.id}",
@@ -674,7 +697,8 @@ if __name__ == "__main__":
             imports_text = "\n".join(imports) if imports else "# No additional imports"
             
             # メインコードからインポート文を削除
-            main_code_cleaned = re.sub(import_pattern, '', mock_main_code).strip()
+            main_code_cleaned = re.sub(import_pattern, '', mock_main_code)
+            main_code_cleaned = self._sanitize_main_code(main_code_cleaned)
             
             # 安全なテンプレート置換のためのディクショナリを作成
             format_dict = {
@@ -853,7 +877,8 @@ if __name__ == "__main__":
         imports_text = "\n".join(imports) if imports else "# No additional imports"
         
         # メインコードからインポート文を削除
-        main_code_cleaned = re.sub(import_pattern, '', main_code).strip()
+        main_code_cleaned = re.sub(import_pattern, '', main_code)
+        main_code_cleaned = self._sanitize_main_code(main_code_cleaned)
         
         # 安全なテンプレート置換のためのディクショナリを作成
         format_dict = {
